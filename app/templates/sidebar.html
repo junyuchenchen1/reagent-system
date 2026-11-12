@@ -1,0 +1,109 @@
+<aside class="sidebar">
+    <div class="brand">
+        <span class="logo"><i class="bi bi-droplet-half"></i></span>
+        <span class="brand-text">试剂管理系统</span>
+    </div>
+
+    <nav class="nav-menu">
+        {% set ep = request.endpoint %}
+        <div class="nav-group-title">概览</div>
+        <a class="nav-item {{ 'active' if ep == 'dashboard.index' }}" href="{{ url_for('dashboard.index') }}">
+            <i class="bi bi-speedometer2"></i><span class="nav-label">首页仪表盘</span>
+        </a>
+
+        <div class="nav-group-title">库存业务</div>
+        {% if current_user.is_manager %}
+        <a class="nav-item {{ 'active' if ep and ep.startswith('stock_in.') }}" href="{{ url_for('stock_in.in_list') }}">
+            <i class="bi bi-box-arrow-in-down"></i><span class="nav-label">试剂入库</span>
+            {% if pending_in %}<span class="badge text-bg-danger rounded-pill">{{ pending_in }}</span>{% endif %}
+        </a>
+        {% endif %}
+        <a class="nav-item {{ 'active' if ep and ep.startswith('stock_out.') }}" href="{{ url_for('stock_out.out_list') }}">
+            <i class="bi bi-box-arrow-up"></i><span class="nav-label">试剂出库</span>
+            {% if pending_out %}<span class="badge text-bg-danger rounded-pill">{{ pending_out }}</span>{% endif %}
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'inventory.stock_list' }}" href="{{ url_for('inventory.stock_list') }}">
+            <i class="bi bi-boxes"></i><span class="nav-label">实时库存</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'inventory.warning' }}" href="{{ url_for('inventory.warning') }}">
+            <i class="bi bi-exclamation-triangle"></i><span class="nav-label">效期预警</span>
+        </a>
+        {% if current_user.is_manager %}
+        <a class="nav-item {{ 'active' if ep in ['inventory.check_list','inventory.check_detail','inventory.check_add'] }}" href="{{ url_for('inventory.check_list') }}">
+            <i class="bi bi-clipboard-check"></i><span class="nav-label">库存盘点</span>
+        </a>
+        {% endif %}
+        <a class="nav-item {{ 'active' if ep in ['inventory.temp_list','inventory.temp_add'] }}" href="{{ url_for('inventory.temp_list') }}">
+            <i class="bi bi-thermometer-half"></i><span class="nav-label">温湿度记录</span>
+        </a>
+
+        <div class="nav-group-title">试剂使用</div>
+        <a class="nav-item {{ 'active' if ep == 'usage.add' }}" href="{{ url_for('usage.add') }}">
+            <i class="bi bi-upc-scan"></i><span class="nav-label">使用登记（扫码）</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'usage.index' }}" href="{{ url_for('usage.index') }}">
+            <i class="bi bi-droplet-half"></i><span class="nav-label">在用试剂（已出库）</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'usage.records' }}" href="{{ url_for('usage.records') }}">
+            <i class="bi bi-journal-text"></i><span class="nav-label">使用记录</span>
+        </a>
+
+        {% if current_user.is_manager %}
+        <div class="nav-group-title">基础数据</div>
+        <a class="nav-item {{ 'active' if ep == 'basic.category_list' }}" href="{{ url_for('basic.category_list') }}">
+            <i class="bi bi-tags"></i><span class="nav-label">试剂分类</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'basic.supplier_list' }}" href="{{ url_for('basic.supplier_list') }}">
+            <i class="bi bi-building"></i><span class="nav-label">供应商</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'basic.location_list' }}" href="{{ url_for('basic.location_list') }}">
+            <i class="bi bi-geo-alt"></i><span class="nav-label">存放位置</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'basic.reagent_list' }}" href="{{ url_for('basic.reagent_list') }}">
+            <i class="bi bi-list-ul"></i><span class="nav-label">试剂档案</span>
+        </a>
+
+        <div class="nav-group-title">分析与系统</div>
+        <a class="nav-item {{ 'active' if ep == 'report.report_index' }}" href="{{ url_for('report.report_index') }}">
+            <i class="bi bi-bar-chart-line"></i><span class="nav-label">统计报表</span>
+        </a>
+        {% if current_user.is_admin %}
+        <a class="nav-item {{ 'active' if ep == 'admin.user_list' }}" href="{{ url_for('admin.user_list') }}">
+            <i class="bi bi-people"></i><span class="nav-label">用户管理</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'admin.log_list' }}" href="{{ url_for('admin.log_list') }}">
+            <i class="bi bi-clock-history"></i><span class="nav-label">操作日志</span>
+        </a>
+        <a class="nav-item {{ 'active' if ep == 'databackup.page' }}" href="{{ url_for('databackup.page') }}">
+            <i class="bi bi-database-down"></i><span class="nav-label">数据导入导出</span>
+        </a>
+        {% endif %}
+        {% endif %}
+    </nav>
+
+<script>
+// 记住侧边栏滚动位置，页面刷新后恢复
+(function() {
+    var nav = document.querySelector('.nav-menu');
+    if (!nav) return;
+    // 恢复滚动位置（延迟一帧等布局完成）
+    var saved = sessionStorage.getItem('sidebarScroll');
+    if (saved !== null) {
+        requestAnimationFrame(function() { nav.scrollTop = parseInt(saved); });
+    }
+    // 滚动时保存
+    nav.addEventListener('scroll', function() {
+        sessionStorage.setItem('sidebarScroll', nav.scrollTop);
+    });
+    // 页面卸载前也保存
+    window.addEventListener('beforeunload', function() {
+        sessionStorage.setItem('sidebarScroll', nav.scrollTop);
+    });
+})();
+</script>
+
+    <div class="sidebar-foot">
+        <span>© 2026 检验科</span><br>
+        <span class="db-tag">{{ DB_TYPE_ACTUAL|upper }}</span>
+    </div>
+</aside>

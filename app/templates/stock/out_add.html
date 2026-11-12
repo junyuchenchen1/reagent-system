@@ -1,0 +1,396 @@
+{% extends 'base.html' %}
+{% block title %}试剂出库{% endblock %}
+{% block page_title %}试剂出库{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 扫码出库 -->
+    <div class="col-lg-4 mb-3">
+        <div class="card h-100" style="border:2px solid var(--primary);">
+            <div class="card-body">
+                <h5 class="mb-3"><i class="bi bi-upc-scan text-primary"></i> 扫码整盒出库</h5>
+                <p class="text-muted small">用条码枪扫描试剂盒上的条码（或手动输入 10 位后回车），自动定位并出库该盒。</p>
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                    <input type="text" class="form-control" id="scanInput"
+                           placeholder="扫描 / 输入条码" autocomplete="off" autofocus>
+                </div>
+                <div id="scanResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 手动出库 -->
+    <div class="col-lg-8 mb-3">
+        <div class="card">
+            <div class="card-header"><h5><i class="bi bi-box-arrow-up"></i> 填写出库信息</h5>
+                <a class="btn btn-light btn-sm" href="{{ url_for('stock_out.out_list') }}">返回列表</a>
+            </div>
+            <div class="card-body">
+                <form method="post" id="outForm">
+                    <input type="hidden" name="scan_barcode" id="scan_barcode">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">试剂分类（筛选）</label>
+                            <select class="form-select" id="categoryFilter">
+                                <option value="">全部分类</option>
+                                {% for c in categories %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">生产企业（筛选）</label>
+                            <select class="form-select" id="mfrFilter">
+                                <option value="">全部厂家</option>
+                                {% for m in manufacturers %}
+                                <option value="{{ m }}">{{ m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label required">选择试剂</label>
+                            <select class="form-select" name="reagent_id" id="reagent">
+                                <option value="">请选择试剂</option>
+                                {% for r in reagents %}
+                                <option value="{{ r.id }}" data-category="{{ r.category_id or '' }}"
+                                    data-mfr="{{ r.registrant or '' }}"
+                                    data-unit="{{ r.unit }}" data-smallunit="{{ r.small_unit }}">
+                                    {{ r.name }}{% if r.registrant %}（{{ r.registrant }}）{% endif %}（{{ r.spec or '无规格' }}，1{{ r.unit }}={{ r.pack_size or 1 }}{{ r.small_unit }}）
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label required">出库数量</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="quantity"
+                                       id="quantity" min="1" value="1">
+                                <span class="input-group-text" id="unitSuffix">盒</span>
+                            </div>
+                            <div class="form-text" id="stockHint"></div>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label required">出库类型</label>
+                            <select class="form-select" name="out_type" id="outType">
+                                <option value="use">检验领用</option>
+                                <option value="qc">质控消耗</option>
+                                <option value="scrap">试剂报废</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">领用科室 / 接收人</label>
+                            <input class="form-control" name="receiver" placeholder="如 生化组 / 张检验">
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label" id="reasonLabel">事由 / 用途说明</label>
+                            <textarea class="form-control" name="reason" id="reason" rows="2"
+                                      placeholder="选择报废时必须填写报废原因"></textarea>
+                        </div>
+                    </div>
+
+                    <div id="fifoInfo" class="alert alert-light border mb-3" style="display:none;"></div>
+
+                    <!-- 扫码后：提示同试剂是否还有效期更早的在库盒（先进先出） -->
+                    <div id="fifoHint" class="mb-3" style="display:none;"></div>
+
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle"></i>
+                        系统按“先进先出”优先出库效期最早的整盒；整盒出库后，请到
+                        <b>【试剂使用 → 使用登记】</b> 扫码按实际瓶数登记消耗。
+                    </div>
+                    <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> 提交并出库</button>
+                    <a class="btn btn-light" href="{{ url_for('stock_out.out_list') }}">取消</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const reagentSel = document.getElementById('reagent');
+    const categorySel = document.getElementById('categoryFilter');
+    const mfrSel = document.getElementById('mfrFilter');
+    const quantityInput = document.getElementById('quantity');
+    const scanInput = document.getElementById('scanInput');
+    const scanResult = document.getElementById('scanResult');
+    const scanBarcode = document.getElementById('scan_barcode');
+    const fifoInfo = document.getElementById('fifoInfo');
+    const fifoHint = document.getElementById('fifoHint');
+    const stockHint = document.getElementById('stockHint');
+    const outType = document.getElementById('outType');
+    const reason = document.getElementById('reason');
+
+    // ---------- 分类+厂家双向联动筛选 ----------
+    function applyFilter() {
+        const cat = categorySel.value;
+        const mfr = mfrSel.value;
+        // 选了厂家才过滤分类
+        if (mfr) {
+            var validCats = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.mfr === mfr && opt.dataset.category) validCats.add(opt.dataset.category);
+            });
+            Array.from(categorySel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validCats.has(opt.value);
+            });
+            if (categorySel.value && !validCats.has(categorySel.value)) categorySel.value = '';
+        } else {
+            Array.from(categorySel.options).forEach(opt => { opt.hidden = false; });
+        }
+        // 选了分类才过滤厂家
+        if (cat) {
+            var validMfrs = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.category === cat && opt.dataset.mfr) validMfrs.add(opt.dataset.mfr);
+            });
+            Array.from(mfrSel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validMfrs.has(opt.value);
+            });
+            if (mfrSel.value && !validMfrs.has(mfrSel.value)) mfrSel.value = '';
+        } else {
+            Array.from(mfrSel.options).forEach(opt => { opt.hidden = false; });
+        }
+
+        var fCat = categorySel.value;
+        var fMfr = mfrSel.value;
+        Array.from(reagentSel.options).forEach(opt => {
+            if (!opt.value) return;
+            const catOk = !fCat || opt.dataset.category === fCat;
+            const mfrOk = !fMfr || opt.dataset.mfr === fMfr;
+            opt.hidden = !(catOk && mfrOk);
+        });
+        reagentSel.value = '';
+        loadBatches();
+    }
+    categorySel.addEventListener('change', applyFilter);
+    mfrSel.addEventListener('change', applyFilter);
+
+    // ---------- 手动：加载在库盒 FIFO ----------
+    reagentSel.addEventListener('change', loadBatches);
+    function loadBatches() {
+        const rid = reagentSel.value;
+        fifoInfo.style.display = 'none';
+        stockHint.textContent = '';
+        // 更新单位后缀
+        const opt = reagentSel.options[reagentSel.selectedIndex];
+        const u = opt ? (opt.dataset.unit || '盒') : '盒';
+        document.getElementById('unitSuffix').textContent = u;
+        if (!rid) return;
+        // 已经扫码锁定了单盒：保持锁定提示，不被批次信息覆盖
+        if (scanBarcode.value) {
+            stockHint.innerHTML = '<span class="text-primary">已扫码锁定 1 盒</span>';
+            return;
+        }
+        const scrap = outType.value === 'scrap';
+        fetch('/stock-out/batches?reagent_id=' + rid + '&out_type=' + outType.value)
+            .then(r => r.json())
+            .then(d => {
+                if (!d.found) return;
+                const total = d.total_boxes || 0;
+                const valid = d.valid_boxes || 0;
+                const expired = d.expired_boxes || 0;
+                // 报废时过期盒也能出，普通领用/质控只能用未过期的
+                const usable = scrap ? total : valid;
+                if (usable <= 0) {
+                    fifoInfo.className = 'alert alert-danger border mb-3';
+                    fifoInfo.innerHTML = '<i class="bi bi-x-circle"></i> 该试剂在库 0 ' + u +
+                        (expired > 0
+                            ? '（其中 ' + expired + ' ' + u + ' 已过期，请把出库类型改为「试剂报废」再出库）'
+                            : '（可能已全部出库）');
+                    fifoInfo.style.display = 'block';
+                    stockHint.innerHTML = '<span class="text-danger">可用 0 ' + u + '</span>';
+                    return;
+                }
+                const rc = d.recommend;
+                let html = '';
+                if (scrap) {
+                    html = '<i class="bi bi-check-circle"></i> 在库共 <b>' + total + '</b> ' + u +
+                        '（其中已过期 <b class="text-danger">' + expired + '</b> ' + u + '），报废按效期最早优先';
+                } else {
+                    html = '<i class="bi bi-check-circle"></i> 在库可用 <b>' + valid + '</b> ' + u +
+                        (expired > 0
+                            ? '（另有 <b class="text-danger">' + expired + '</b> ' + u + '已过期，仅可报废）'
+                            : '') +
+                        '，建议优先使用批号 <b>' + (rc ? rc.batch_no : '') + '</b>';
+                }
+                if (rc) {
+                    html += '（效期 ' + rc.expire_date + '，' +
+                        (rc.days_left < 0
+                            ? '<span class="text-danger">已过期 ' + Math.abs(rc.days_left) + ' 天</span>'
+                            : '剩 ' + rc.days_left + ' 天') + '）';
+                }
+                fifoInfo.className = 'alert alert-success border mb-3';
+                fifoInfo.innerHTML = html;
+                fifoInfo.style.display = 'block';
+                stockHint.innerHTML = scrap
+                    ? '在库共 <b class="text-success">' + total + '</b> ' + u
+                    : '在库可用 <b class="text-success">' + valid + '</b> ' + u;
+            });
+    }
+
+    // ---------- 扫码 ----------
+    scanInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const code = this.value.trim();
+            if (code.length < 8) return;
+            lookupBarcode(code);
+        }
+    });
+
+    function lookupBarcode(code) {
+        fetch('/stock-out/scan?barcode=' + encodeURIComponent(code))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.found) {
+                    scanResult.innerHTML = '<div class="alert alert-danger py-2 small mb-0">' +
+                        '<i class="bi bi-x-circle"></i> ' + d.message + '</div>';
+                    return;
+                }
+                if (!d.can_out) {
+                    // 已出库 / 使用中 / 已用完 / 已报废：状态本身不允许再出库
+                    scanResult.innerHTML = '<div class="alert alert-warning py-2 small mb-0">' +
+                        '<i class="bi bi-exclamation-triangle"></i> 该盒当前状态「' + d.status_text +
+                        '」，不能出库（批号 ' + d.batch_no + '）</div>';
+                    return;
+                }
+                if (d.expired && outType.value !== 'scrap') {
+                    // 在库但已过期：领用/质控不允许，报废允许
+                    scanResult.innerHTML = '<div class="alert alert-warning py-2 small mb-0">' +
+                        '<div><i class="bi bi-exclamation-triangle"></i> 该盒<b>已过期</b>（效期 ' +
+                        d.expire_date + '，已过期 ' + Math.abs(d.days_left) + ' 天），' +
+                        '已过期的盒<b>只能按「试剂报废」出库</b>。</div>' +
+                        '<div class="mt-2"><button type="button" class="btn btn-sm btn-danger" ' +
+                        'onclick="toScrap(\'' + d.barcode + '\')">' +
+                        '<i class="bi bi-trash"></i> 切换为“试剂报废”并锁定这盒</button></div></div>';
+                    return;
+                }
+                lockPack(d);
+            });
+    }
+
+    function toScrap(code) {
+        outType.value = 'scrap';
+        outType.dispatchEvent(new Event('change'));
+        lookupBarcode(code);
+    }
+
+    function lockPack(d) {
+        scanBarcode.value = d.barcode;
+        categorySel.value = '';
+        Array.from(reagentSel.options).forEach(o => o.hidden = false);
+        reagentSel.value = d.reagent_id;
+        quantityInput.value = 1;
+        stockHint.innerHTML = '<span class="text-primary">扫码锁定 1 盒</span>';
+        fifoInfo.style.display = 'none';
+        const tag = d.expired
+            ? ' <span class="badge badge-soft-danger">已过期，按报废出库</span>' : '';
+        scanResult.innerHTML =
+            '<div class="alert alert-success py-2 small">' +
+            '<div><b>' + d.reagent_name + '</b>' + tag + '</div>' +
+            '<div>条码 ' + d.barcode + ' ｜ 批号 ' + d.batch_no +
+            ' ｜ 效期 ' + d.expire_date + '（' +
+            (d.expired ? '已过期 ' + Math.abs(d.days_left) + ' 天' : '剩 ' + d.days_left + ' 天') + '）</div>' +
+            '<div class="mt-1"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearScan()">清除扫码，改手动</button></div>' +
+            '</div>';
+        scanInput.value = '';
+        scanInput.focus();
+        lastScan = d;
+        renderFifoHint(d);
+    }
+    function clearScan() {
+        scanBarcode.value = '';
+        scanResult.innerHTML = '';
+        lastScan = null;
+        fifoHint.style.display = 'none';
+        fifoHint.innerHTML = '';
+        loadBatches();
+    }
+
+    // ---------- 先进先出提醒：扫到的盒不是效期最早时，提示先出更早的盒 ----------
+    let lastScan = null;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function renderFifoHint(d) {
+        // 报废、已过期、或没有锁定盒时不提示
+        if (!d || !d.can_use || d.expired || outType.value === 'scrap') {
+            fifoHint.style.display = 'none';
+            fifoHint.innerHTML = '';
+            return;
+        }
+        let html = '';
+        const expiredNote = (d.earlier_expired_count > 0)
+            ? '<div class="mt-1 text-muted">另有 ' + d.earlier_expired_count +
+              ' 盒已过期，只能按「试剂报废」处理。</div>'
+            : '';
+        if (d.earlier_count > 0) {
+            html += '<div class="alert alert-warning border mb-0 small">' +
+                '<div><i class="bi bi-exclamation-triangle"></i> <b>先进先出提醒：</b>' +
+                '该试剂还有 <b>' + d.earlier_count + '</b> 盒效期更早的在库盒，' +
+                '建议先出这些，免得老批号放过期。</div>' +
+                '<div class="mt-2 d-flex flex-column gap-1">';
+            d.earlier.forEach(function (p) {
+                html += '<div class="d-flex flex-wrap align-items-center gap-2">' +
+                    '<span>批号 <b>' + esc(p.batch_no) + '</b> ｜ 效期 ' + esc(p.expire_date) +
+                    '（' + (p.expired
+                        ? '<span class="text-danger">已过期 ' + Math.abs(p.days_left) + ' 天</span>'
+                        : '剩 ' + p.days_left + ' 天') + '）' +
+                    ' ｜ 条码 <code>' + esc(p.barcode) + '</code></span>' +
+                    '<button type="button" class="btn btn-sm btn-warning" onclick="lookupBarcode(\'' +
+                    esc(p.barcode) + '\')"><i class="bi bi-arrow-repeat"></i> 改用这盒</button>' +
+                    '</div>';
+            });
+            html += '</div>' + expiredNote + '</div>';
+        } else {
+            html += '<div class="alert alert-success border mb-0 small">' +
+                '<i class="bi bi-check-circle"></i> ' +
+                (d.earlier_expired_count > 0
+                    ? '这盒是当前<b>效期最早的可领用</b>在库盒。'
+                    : '这盒就是<b>该试剂当前效期最早</b>的在库盒，按“先进先出”先出它没问题。') +
+                expiredNote + '</div>';
+        }
+        fifoHint.innerHTML = html;
+        fifoHint.style.display = 'block';
+    }
+
+    // ---------- 从「实时库存 → 明细」带条码跳转过来：自动锁定该盒 ----------
+    (function () {
+        const params = new URLSearchParams(location.search);
+        const ot = params.get('out_type');
+        if (ot === 'use' || ot === 'qc' || ot === 'scrap') {
+            outType.value = ot;
+            outType.dispatchEvent(new Event('change'));
+        }
+        const bc = (params.get('barcode') || '').trim();
+        if (bc.length >= 8) {
+            scanInput.value = bc;
+            lookupBarcode(bc);
+        }
+    })();
+
+    // ---------- 报废事由 ----------
+    outType.addEventListener('change', function () {
+        const scrap = this.value === 'scrap';
+        reason.required = scrap;
+        document.getElementById('reasonLabel').innerHTML = scrap
+            ? '报废原因 <span class="text-danger">*</span>' : '事由 / 用途说明';
+        // 报废时要连过期盒一起统计，普通领用只看未过期盒
+        loadBatches();
+        // 出库类型影响先进先出提醒（报废时不需要提示效期更早的盒）
+        if (lastScan) renderFifoHint(lastScan);
+    });
+</script>
+{% endblock %}

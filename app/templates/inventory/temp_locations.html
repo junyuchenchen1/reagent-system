@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}温湿度位置管理{% endblock %}
+{% block page_title %}温湿度位置管理{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="post" action="{{ url_for('inventory.temp_locations_save') }}" class="row g-2 mb-3">
+            <div class="col-md-4"><input class="form-control" name="name" placeholder="位置名称（如：2-8℃冰箱1）" required></div>
+            <div class="col-md-3">
+                <select class="form-select" name="temp_type">
+                    <option value="cool">冷藏(2-8℃)</option>
+                    <option value="freeze">冷冻(-20℃)</option>
+                    <option value="room">室温</option>
+                </select>
+            </div>
+            <div class="col-md-2"><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> 添加</button></div>
+        </form>
+        <table class="table table-bordered">
+            <thead><tr><th>名称</th><th>类型</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for l in locs %}
+            <tr>
+                <form method="post" action="{{ url_for('inventory.temp_locations_save') }}">
+                    <input type="hidden" name="id" value="{{ l.id }}">
+                    <td><input class="form-control" name="name" value="{{ l.name }}"></td>
+                    <td>
+                        <select class="form-select" name="temp_type">
+                            <option value="cool" {{ 'selected' if l.temp_type=='cool' }}>冷藏</option>
+                            <option value="freeze" {{ 'selected' if l.temp_type=='freeze' }}>冷冻</option>
+                            <option value="room" {{ 'selected' if l.temp_type=='room' }}>室温</option>
+                        </select>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary"><i class="bi bi-check"></i></button>
+                        <a class="btn btn-sm btn-outline-danger" href="#" onclick="if(confirm('删除？历史数据不受影响')){document.getElementById('del_{{ l.id }}').submit()}"><i class="bi bi-trash"></i></a>
+                    </td>
+                </form>
+            </tr>
+            <form id="del_{{ l.id }}" method="post" action="{{ url_for('inventory.temp_locations_delete', lid=l.id) }}"></form>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

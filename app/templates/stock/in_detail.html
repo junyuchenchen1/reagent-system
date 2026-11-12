@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}入库单详情{% endblock %}
+{% block page_title %}入库单详情{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-xl-10">
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-file-earmark-text me-2"></i>入库单 {{ si.order_no }}</h5>
+        <span class="ms-auto">
+            {% if si.status==0 %}<span class="badge badge-soft-warning">待审核</span>
+            {% elif si.status==1 %}<span class="badge badge-soft-success">已入库</span>
+            {% else %}<span class="badge badge-soft-danger">已取消</span>{% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered">
+            <tr><th style="width:150px;background:#F7F8FA;">试剂名称</th><td>{{ si.reagent.name }}</td>
+                <th style="width:150px;background:#F7F8FA;">所属分类</th><td>{{ si.reagent.category.name if si.reagent.category else '-' }}</td></tr>
+            <tr><th style="background:#F7F8FA;">规格型号</th><td>{{ si.reagent.spec or '-' }}</td>
+                <th style="background:#F7F8FA;">批号</th><td>{{ si.batch_no }}</td></tr>
+            <tr><th style="background:#F7F8FA;">有效期至</th><td>{{ si.expire_date.strftime('%Y-%m-%d') }}</td>
+                <th style="background:#F7F8FA;">包装规格</th><td>1 {{ si.reagent.unit }} = {{ si.reagent.pack_size or 1 }} {{ si.reagent.small_unit }}</td></tr>
+            <tr><th style="background:#F7F8FA;">入库数量</th><td class="fw-bold">{{ si.quantity }} {{ si.reagent.unit }}</td>
+                <th style="background:#F7F8FA;">总金额</th><td class="fw-bold text-danger">¥{{ si.amount }}</td></tr>
+            <tr><th style="background:#F7F8FA;">供应商</th><td>{{ si.supplier.name if si.supplier else '-' }}</td>
+                <th style="background:#F7F8FA;">存放位置</th><td>{{ si.storage_location or '-' }}</td></tr>
+            <tr><th style="background:#F7F8FA;">登记人</th><td>{{ si.operator.real_name if si.operator else '-' }}</td>
+                <th style="background:#F7F8FA;">登记时间</th><td>{{ si.create_time.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+            <tr><th style="background:#F7F8FA;">备注</th><td colspan="3">{{ si.remark or '-' }}</td></tr>
+        </table>
+
+        {% if packs %}
+        <h6 class="mt-4 mb-2"><i class="bi bi-upc-scan"></i> 本批条码明细（{{ packs|length }} 枚）</h6>
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+            <thead><tr><th>序号</th><th>条码号</th><th>状态</th><th>每包装</th><th>已用/剩余</th><th>效期</th></tr></thead>
+            <tbody>
+            {% for p in packs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><span class="font-monospace fw-bold">{{ p.barcode }}</span></td>
+                <td><span class="badge badge-soft-{{ 'success' if p.status=='in_stock' else 'secondary' }}">{{ p.status_text }}</span></td>
+                <td>{{ p.total_units }} {{ si.reagent.small_unit }}</td>
+                <td>{{ p.used_units }} / {{ p.remaining_units }}</td>
+                <td>{{ p.expire_date.strftime('%Y-%m-%d') }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <a href="{{ url_for('stock_in.in_list') }}" class="btn btn-light"><i class="bi bi-arrow-left"></i> 返回</a>
+        {% if si.status==1 %}
+        <a class="btn btn-primary ms-auto" href="{{ url_for('stock_in.labels', sid=si.id) }}"><i class="bi bi-printer"></i> 打印条码标签</a>
+        {% endif %}
+        {% if si.status==0 and current_user.is_manager %}
+        <form class="d-inline" method="post" action="{{ url_for('stock_in.in_audit', sid=si.id) }}">
+            <input type="hidden" name="action" value="approve">
+            <button class="btn btn-success"><i class="bi bi-check-lg"></i> 审核通过并生成条码</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}

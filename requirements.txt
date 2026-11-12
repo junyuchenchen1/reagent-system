@@ -1,0 +1,14 @@
+# ===== 检验科试剂管理系统 依赖清单 =====
+# 兼容 Python 3.10 ~ 3.14
+Flask>=3.0
+Flask-SQLAlchemy>=3.1
+Flask-Login>=0.6
+SQLAlchemy>=2.0
+PyMySQL>=1.1          # MySQL 数据库驱动
+cryptography>=42.0    # PyMySQL caching_sha2_password 认证需要（MySQL 8.0）
+openpyxl>=3.1         # Excel 导入导出
+Pillow>=10.0          # openpyxl 插入图片（手写签名）必需
+pandas>=2.0           # 数据统计分析
+waitress>=3.0         # 生产级WSGI服务器（局域网多线程访问，替代Flask内置开发服务器）
+Werkzeug>=3.0
+pytest>=8.0           # 基础业务回归测试

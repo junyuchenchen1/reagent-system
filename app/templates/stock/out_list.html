@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}试剂出库{% endblock %}
+{% block page_title %}试剂出库{% endblock %}
+
+{% block content %}
+<form class="search-bar row g-2" method="get">
+    <div class="col-md-3"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="单号 / 试剂名 / 条码 / 科室"></div>
+    <div class="col-md-2">
+        <select class="form-select" name="status">
+            <option value="">全部状态</option>
+            <option value="0" {{ 'selected' if status=='0' }}>待确认</option>
+            <option value="1" {{ 'selected' if status=='1' }}>已出库</option>
+            <option value="2" {{ 'selected' if status=='2' }}>已取消</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="out_type">
+            <option value="">全部类型</option>
+            <option value="use" {{ 'selected' if out_type=='use' }}>检验领用</option>
+            <option value="qc" {{ 'selected' if out_type=='qc' }}>质控消耗</option>
+            <option value="scrap" {{ 'selected' if out_type=='scrap' }}>试剂报废</option>
+        </select>
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+        <a class="btn btn-light" href="{{ url_for('stock_out.out_list') }}">重置</a>
+    </div>
+    <div class="col-md-2 d-flex">
+        <a class="btn btn-success ms-auto" href="{{ url_for('stock_out.out_add') }}"><i class="bi bi-upc-scan"></i> 出库</a>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-list-columns me-2"></i>出库记录</h5>
+        {% if current_user.is_manager %}
+        <form class="d-flex align-items-center gap-2 ms-auto" method="get"
+              action="{{ url_for('stock_out.out_export') }}">
+            <input type="hidden" name="status" value="{{ request.args.get('status', '') }}">
+            <input type="hidden" name="out_type" value="{{ request.args.get('out_type', '') }}">
+            <select class="form-select form-select-sm" name="range" style="width:130px"
+                    onchange="this.form.querySelector('.exp-start').style.display = this.value==='custom'?'':'none'; this.form.querySelector('.exp-end').style.display = this.value==='custom'?'':'none';">
+                <option value="">全部时间</option>
+                <option value="week">最近一周</option>
+                <option value="month">最近一月</option>
+                <option value="half">最近半年</option>
+                <option value="year">最近一年</option>
+                <option value="custom">自定义…</option>
+            </select>
+            <input type="date" class="form-control form-control-sm exp-start" name="start" style="width:auto;display:none">
+            <input type="date" class="form-control form-control-sm exp-end" name="end" style="width:auto;display:none">
+            <button class="btn btn-sm btn-light"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>出库单号</th><th>试剂</th><th>条码</th><th>数量</th><th>类型</th><th>出库人</th><th>接收人</th><th>状态</th><th style="width:170px;">操作</th></tr></thead>
+            <tbody>
+            {% for so in pagination.items %}
+            <tr>
+                <td class="cell-sub">{{ so.order_no }}</td>
+                <td class="cell-main">{{ so.reagent.name }}</td>
+                <td>
+                    {% if so.scan_barcode %}<span class="font-monospace">{{ so.scan_barcode }}</span>
+                    {% else %}<span class="text-muted small">FIFO 分配</span>{% endif %}
+                </td>
+                <td><span class="fw-bold">{{ so.quantity }}</span> {{ so.reagent.unit }}</td>
+                <td><span class="badge {{ 'badge-soft-danger' if so.out_type=='scrap' else 'badge-soft-primary' }}">{{ so.type_text }}</span></td>
+                <td>
+                    {% if so.confirmer %}{{ so.confirmer.real_name }}
+                    {% elif so.status == 0 and so.applicant and not so.applicant.is_manager %}<span class="text-muted small">待选</span>
+                    {% else %}{{ so.applicant.real_name if so.applicant else '-' }}{% endif %}
+                </td>
+                <td>
+                    {% if so.receiver %}{{ so.receiver }}
+                    {% elif so.status == 0 and so.applicant and not so.applicant.is_manager %}{{ so.applicant.real_name }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if so.status==0 %}<span class="badge badge-soft-warning">待确认</span>
+                    {% elif so.status==1 %}<span class="badge badge-soft-success">已出库</span>
+                    {% else %}<span class="badge badge-soft-danger">已取消</span>{% endif %}
+                </td>
+                <td>
+                    <a class="btn btn-sm btn-light" href="{{ url_for('stock_out.out_detail', sid=so.id) }}"><i class="bi bi-eye"></i></a>
+                    {% if so.status==0 %}
+                        <button class="btn btn-sm btn-success" title="确认出库"
+                            onclick='openConfirmModal({{ so.id }}, "{{ so.reagent.name }}", {{ so.quantity }}, "{{ so.reagent.unit }}", {{ so._unverified|tojson }})'>
+                            <i class="bi bi-check-lg"></i> 确认出库
+                        </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-inbox"></i>暂无出库记录</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'stock_out.out_list') }}
+
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shield-lock me-2"></i>出库确认</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="confirmForm" method="post">
+        <input type="hidden" name="force" id="forceFlag" value="no">
+        <div class="modal-body">
+          <p>您正在出库：<strong id="confirmInfo"></strong></p>
+          <div id="unverifiedWarn" class="alert alert-danger py-2 px-3 mb-2" style="display:none;">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span id="unverifiedText"></span>
+          </div>
+          {% if current_user.is_manager %}
+          <p class="text-muted small">组低耗员：{{ current_user.real_name }}（{{ current_user.role_name }}）</p>
+          <div class="mb-3">
+            <label class="form-label required">接收人</label>
+            <select class="form-select" name="receiver_id" required>
+              <option value="">请选择接收人</option>
+              {% for r in receivers %}
+              <option value="{{ r.id }}">{{ r.real_name }}（{{ r.role_name }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <p class="text-muted small">接收人：{{ current_user.real_name }}（{{ current_user.role_name }}）</p>
+          <div class="mb-3">
+            <label class="form-label required">出库人（管理员）</label>
+            <select class="form-select" name="confirmer_id" id="confirmerSel" required>
+              <option value="">请选择出库人</option>
+              {% for c in confirmer_candidates %}
+              <option value="{{ c.id }}">{{ c.real_name }}（{{ c.role_name }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3" id="pwdWrap" style="display:none;">
+            <label class="form-label" id="pwdLabel">出库人密码</label>
+            <input type="password" class="form-control" name="confirmer_password" id="confirmerPwd">
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" id="modalCancelBtn">取消出库</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> 确认出库</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+var currentSid = null;
+function openConfirmModal(sid, name, qty, unit, unverified) {
+    currentSid = sid;
+    document.getElementById('confirmInfo').textContent = name + ' ' + qty + ' ' + (unit || '盒');
+    document.getElementById('confirmForm').action = '/stock-out/' + sid + '/confirm';
+    document.getElementById('forceFlag').value = 'yes';
+    // 显示未验证警告
+    var warnDiv = document.getElementById('unverifiedWarn');
+    if (unverified && unverified.length > 0) {
+        document.getElementById('unverifiedText').textContent =
+            '警告：批号 ' + unverified.join(', ') + ' 尚未完成性能验证，确认仍要出库？';
+        warnDiv.style.display = '';
+    } else {
+        warnDiv.style.display = 'none';
+    }
+    var sel = document.getElementById('confirmerSel');
+    if (sel) { sel.value = ''; var pw = document.getElementById('confirmerPwd'); if (pw) pw.value = ''; }
+    new bootstrap.Modal(document.getElementById('confirmModal')).show();
+}
+var confSel = document.getElementById('confirmerSel');
+if (confSel) {
+    confSel.addEventListener('change', function() {
+        var pwdWrap = document.getElementById('pwdWrap');
+        var pwdInput = document.getElementById('confirmerPwd');
+        if (this.value) {
+            pwdWrap.style.display = '';
+            pwdInput.required = true;
+        } else {
+            pwdWrap.style.display = 'none';
+            pwdInput.required = false;
+        }
+    });
+}
+document.getElementById('modalCancelBtn').addEventListener('click', function() {
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '/stock-out/' + currentSid + '/cancel';
+    document.body.appendChild(form);
+    form.submit();
+});
+</script>
+{% endblock %}

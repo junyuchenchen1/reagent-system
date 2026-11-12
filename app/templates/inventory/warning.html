@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}效期预警{% endblock %}
+{% block page_title %}效期与库存预警{% endblock %}
+
+{% block content %}
+{% set expired = warn_items | selectattr('status','equalto','expired') | list %}
+{% set warning = warn_items | selectattr('status','equalto','warning') | list %}
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="stat-card"><div class="stat-icon ic-danger"><i class="bi bi-x-octagon"></i></div>
+            <div><div class="stat-value">{{ expired|length }}</div>
+                <div class="stat-label">已过期批次</div></div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card"><div class="stat-icon ic-warning"><i class="bi bi-hourglass-split"></i></div>
+            <div><div class="stat-value">{{ warning|length }}</div>
+                <div class="stat-label">临期批次</div></div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card"><div class="stat-icon ic-primary"><i class="bi bi-bell"></i></div>
+            <div><div class="stat-value">{{ low_items|length }}</div>
+                <div class="stat-label">库存不足试剂</div></div></div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5><i class="bi bi-exclamation-triangle text-warning me-2"></i>效期预警明细</h5></div>
+    <div class="card-body p-0">
+        {% if warn_items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>试剂</th><th>批号</th><th>有效期</th><th>在库</th><th>剩余天数</th><th>状态</th><th>处理建议</th></tr></thead>
+            <tbody>
+            {% for i in warn_items %}
+            <tr>
+                <td class="cell-main">{{ i.reagent.name }}</td>
+                <td>{{ i.batch_no }}</td>
+                <td>{{ i.expire_date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ i.boxes }} {{ i.reagent.unit }}</td>
+                <td>{{ i.days }} 天</td>
+                <td>
+                    {% if i.status=='expired' %}<span class="badge badge-soft-danger pulse">已过期</span>
+                    {% else %}<span class="badge badge-soft-warning">临期</span>{% endif %}
+                </td>
+                <td class="small text-muted">
+                    {% if i.status=='expired' %}<a href="{{ url_for('stock_out.out_add') }}">请按报废流程处理</a>
+                    {% else %}优先安排使用，或与供应商协商退换{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-emoji-smile"></i>所有在库试剂效期正常</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5><i class="bi bi-bell text-danger me-2"></i>库存不足试剂</h5></div>
+    <div class="card-body p-0">
+        {% if low_items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>试剂</th><th>当前在库</th><th>最低预警值</th><th>缺口</th><th>处理建议</th></tr></thead>
+            <tbody>
+            {% for r in low_items %}
+            <tr>
+                <td class="cell-main">{{ r.reagent.name }}</td>
+                <td>{{ r.current }} {{ r.reagent.unit }}</td>
+                <td>{{ r.min }} {{ r.reagent.unit }}</td>
+                <td class="text-danger fw-bold">{{ r.min - r.current }} {{ r.reagent.unit }}</td>
+                <td class="small"><a href="{{ url_for('stock_in.in_add') }}">{{ r.suggestion }}</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-emoji-smile"></i>库存均充足</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

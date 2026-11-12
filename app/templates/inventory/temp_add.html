@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}新增温湿度记录{% endblock %}
+{% block page_title %}批量录入温湿度{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <label class="form-label required">日期</label>
+                    <input type="date" class="form-control" name="record_date" value="{{ today }}" required>
+                </div>
+            </div>
+            <table class="table table-bordered">
+                <thead><tr>
+                    <th>冰箱/位置</th><th>温度℃</th><th>湿度%</th><th>备注</th><th></th>
+                </tr></thead>
+                <tbody id="locBody">
+                {% for loc in locations %}
+                <tr>
+                    <td>
+                        <select class="form-select" name="location[]" required>
+                            <option value="">请选择</option>
+                            {% for l in locations %}<option value="{{ l }}" {{ 'selected' if l==loc }}>{{ l }}</option>{% endfor %}
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.1" class="form-control" name="am_temp[]"></td>
+                    <td><input type="number" step="0.1" class="form-control" name="humidity[]"></td>
+                    <td><input class="form-control" name="note[]"></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-x-lg"></i></button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div>
+                <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> 保存全部</button>
+                <a class="btn btn-light" href="{{ url_for('inventory.temp_list') }}">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var allLocs = {{ locations|tojson }};
+function addRow() {
+    var opts = '<option value="">请选择</option>' + allLocs.map(function(l){return '<option value="'+l+'">'+l+'</option>';}).join('');
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><select class="form-select" name="location[]" required>'+opts+'</select></td>' +
+        '<td><input type="number" step="0.1" class="form-control" name="am_temp[]"></td>' +
+        '<td><input type="number" step="0.1" class="form-control" name="humidity[]"></td>' +
+        '<td><input class="form-control" name="note[]"></td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove()"><i class="bi bi-x-lg"></i></button>';
+    document.getElementById('locBody').appendChild(tr);
+}
+</script>
+{% endblock %}

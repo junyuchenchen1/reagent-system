@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}试剂入库{% endblock %}
+{% block page_title %}试剂入库{% endblock %}
+
+{% block content %}
+<form class="search-bar row g-2" method="get">
+    <div class="col-md-3"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="单号 / 试剂名 / 批号"></div>
+    <div class="col-md-2">
+        <select class="form-select" name="status">
+            <option value="">全部状态</option>
+            <option value="0" {{ 'selected' if status=='0' }}>待审核</option>
+            <option value="1" {{ 'selected' if status=='1' }}>已入库</option>
+            <option value="2" {{ 'selected' if status=='2' }}>已取消</option>
+        </select>
+    </div>
+    <div class="col-md-2"><input type="date" class="form-control" name="start" value="{{ start }}"></div>
+    <div class="col-md-2"><input type="date" class="form-control" name="end" value="{{ end }}"></div>
+    <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+        <a class="btn btn-light" href="{{ url_for('stock_in.in_list') }}">重置</a>
+        <a class="btn btn-success ms-auto" href="{{ url_for('stock_in.in_add') }}"><i class="bi bi-plus-lg"></i> 入库</a>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-list-columns me-2"></i>入库记录</h5>
+        <form class="d-flex align-items-center gap-2 ms-auto" method="get"
+              action="{{ url_for('stock_in.in_export') }}">
+            <input type="hidden" name="status" value="{{ request.args.get('status', '') }}">
+            <select class="form-select form-select-sm" name="range" style="width:130px"
+                    onchange="this.form.querySelector('.exp-start').style.display = this.value==='custom'?'':'none'; this.form.querySelector('.exp-end').style.display = this.value==='custom'?'':'none';">
+                <option value="">全部时间</option>
+                <option value="week">最近一周</option>
+                <option value="month">最近一月</option>
+                <option value="half">最近半年</option>
+                <option value="year">最近一年</option>
+                <option value="custom">自定义…</option>
+            </select>
+            <input type="date" class="form-control form-control-sm exp-start" name="start" style="width:auto;display:none">
+            <input type="date" class="form-control form-control-sm exp-end" name="end" style="width:auto;display:none">
+            <button class="btn btn-sm btn-light"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>入库单号</th><th>试剂</th><th>批号</th><th>有效期</th><th>数量</th><th>金额</th><th>供应商</th><th>接收状态</th><th>状态</th><th style="width:200px;">操作</th></tr></thead>
+            <tbody>
+            {% for si in pagination.items %}
+            <tr>
+                <td class="cell-sub">{{ si.order_no }}</td>
+                <td class="cell-main">{{ si.reagent.name }}</td>
+                <td>{{ si.batch_no }}</td>
+                <td>{{ si.expire_date.strftime('%Y-%m-%d') }}</td>
+                <td><span class="fw-bold">{{ si.quantity }}</span> {{ si.reagent.unit }}</td>
+                <td>¥{{ si.amount }}</td>
+                <td class="cell-sub">{{ si.supplier.name if si.supplier else '-' }}</td>
+                <td>{{ si.accept_status or '合格' }}</td>
+                <td>
+                    {% if si.status==0 %}<span class="badge badge-soft-warning">待审核</span>
+                    {% elif si.status==1 %}<span class="badge badge-soft-success">已入库</span>
+                    {% else %}<span class="badge badge-soft-danger">已取消</span>{% endif %}
+                </td>
+                <td>
+                    <a class="btn btn-sm btn-light" href="{{ url_for('stock_in.in_detail', sid=si.id) }}"><i class="bi bi-eye"></i></a>
+                    {% if si.status==1 %}
+                    <a class="btn btn-sm btn-primary" href="{{ url_for('stock_in.labels', sid=si.id) }}" title="打印条码"><i class="bi bi-printer"></i> 条码</a>
+                    {% endif %}
+                    {% if si.status==0 and current_user.is_manager %}
+                    <form class="d-inline" method="post" action="{{ url_for('stock_in.in_audit', sid=si.id) }}">
+                        <input type="hidden" name="action" value="approve">
+                        <button class="btn btn-sm btn-success" title="审核通过并生成条码"><i class="bi bi-check-lg"></i></button>
+                    </form>
+                    <button class="btn btn-sm btn-danger" title="驳回"
+                        onclick="openReject('{{ url_for('stock_in.in_audit', sid=si.id) }}')"><i class="bi bi-x-lg"></i></button>
+                    {% endif %}
+                    {% if current_user.is_admin and si.status == 0 %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('stock_in.in_edit', sid=si.id) }}" title="编辑"><i class="bi bi-pencil"></i></a>
+                    <form class="d-inline" method="post" action="{{ url_for('stock_in.in_delete', sid=si.id) }}"
+                          onsubmit="return confirm('确定删除此待审核入库申请？')">
+                        <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-inbox"></i>暂无入库记录</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'stock_in.in_list') }}
+
+<div class="modal fade" id="verifyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <form id="verifyForm" method="post">
+                <div class="modal-header"><h5 class="modal-title">性能验证确认</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p id="verifyText"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-warning">确认验证完成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="rejectForm" method="post">
+                <div class="modal-header"><h5 class="modal-title">驳回入库申请</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="reject">
+                    <label class="form-label">驳回原因（可选）</label>
+                    <textarea class="form-control" name="reason" rows="3"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认驳回</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openReject(action) {
+        document.getElementById('rejectForm').action = action;
+        new bootstrap.Modal(document.getElementById('rejectModal')).show();
+    }
+    function openVerifyModal(action, batch) {
+        document.getElementById('verifyForm').action = action;
+        document.getElementById('verifyText').textContent = '确认批号 ' + batch + ' 已完成性能验证？';
+        new bootstrap.Modal(document.getElementById('verifyModal')).show();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}温湿度记录{% endblock %}
+{% block page_title %}储存环境温湿度记录{% endblock %}
+
+{% block content %}
+<form class="search-bar row g-2" method="get">
+    <div class="col-md-2">
+        <select class="form-select" name="location">
+            <option value="">全部冰箱</option>
+            {% for loc in all_locs %}<option value="{{ loc }}" {{ 'selected' if loc_filter==loc }}>{{ loc }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <input type="month" class="form-control" name="month" value="{{ month }}">
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+        <a class="btn btn-light" href="{{ url_for('inventory.temp_list') }}">重置</a>
+    </div>
+    <div class="col-md-3 ms-auto d-flex gap-2">
+        <a class="btn btn-success" href="{{ url_for('inventory.temp_add') }}"><i class="bi bi-plus-lg"></i> 新增记录</a>
+        <a class="btn btn-light" href="{{ url_for('inventory.temp_export') }}?location={{ loc_filter }}&month={{ month }}"><i class="bi bi-file-earmark-excel"></i> 导出</a>
+    </div>
+</form>
+
+{% for loc, data in chart_data.items() %}
+<div class="card mt-3" id="card_{{ loop.index }}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>{{ loc }}</h5>
+        <button class="btn btn-sm btn-light" onclick="printChart({{ loop.index }}, '{{ loc }}')"><i class="bi bi-printer"></i> 打印</button>
+    </div>
+    <div class="card-body">
+        <canvas id="chart_{{ loop.index }}" data-loc="{{ loc }}" height="60"></canvas>
+    </div>
+</div>
+{% endfor %}
+
+<div class="card mt-3">
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <table class="table table-hover align-middle">
+            <thead><tr><th>日期</th><th>位置</th><th>温度℃</th><th>湿度%</th><th>记录人</th><th>备注</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for t in pagination.items %}
+            <tr>
+                <td>{{ t.record_date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ t.location }}</td>
+                <td>{{ t.am_temp if t.am_temp is not none else '-' }}</td>
+                <td>{{ t.humidity if t.humidity is not none else '-' }}</td>
+                <td>{{ t.recorder.real_name if t.recorder else '-' }}</td>
+                <td>{{ t.note or '' }}</td>
+                <td>
+                    <div class="d-flex gap-1">
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('inventory.temp_edit', tid=t.id) }}"><i class="bi bi-pencil"></i></a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-thermometer-half"></i>暂无记录</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'inventory.temp_list') }}
+{% endblock %}
+
+{% block scripts %}
+<!-- 本地内置 Chart.js（原来引用 jsdelivr CDN，局域网/断网电脑会卡住加载） -->
+<script src="{{ url_for('static', filename='vendor/js/chart.umd.min.js') }}"></script>
+<script>
+var chartData = {{ chart_data|tojson }};
+function printChart(idx, loc) {
+    var card = document.getElementById('card_' + idx);
+    var win = window.open('', '', 'width=900,height=600');
+    var rows = '';
+    for (var i = 0; i < chartData[loc].labels.length; i++) {
+        rows += '<tr><td>' + chartData[loc].labels[i] + '</td><td>' + (chartData[loc].temp[i] ?? '-') + '</td><td>' + (chartData[loc].humidity[i] ?? '-') + '</td></tr>';
+    }
+    win.document.write('<html><head><title>' + loc + '温湿度记录</title><style>body{font-family:微软雅黑;padding:20px}table{border-collapse:collapse;width:100%;margin-top:15px}td,th{border:1px solid #333;padding:6px;text-align:center}h3{text-align:center}</style></head><body>');
+    win.document.write('<h3>' + loc + ' 温湿度记录（{{ month }}）</h3>');
+    var img = document.querySelector('canvas[data-loc="' + loc + '"]').toDataURL();
+    win.document.write('<img src="' + img + '" style="width:100%">');
+    win.document.write('<table><tr><th>日期</th><th>温度℃</th><th>湿度%</th></tr>' + rows + '</table>');
+    win.document.write('</body></html>');
+    win.document.close();
+    win.print();
+}
+for (var loc in chartData) {
+    var ctx = document.querySelector('canvas[data-loc="' + loc + '"]');
+    if (!ctx) continue;
+    // 根据冰箱名称自动设置温度Y轴范围
+    var tMin = 0, tMax = 15;
+    if (loc.indexOf('-20') >= 0 || loc.indexOf('冷冻') >= 0) { tMin = -25; tMax = -15; }
+    else if (loc.indexOf('2-8') >= 0 || loc.indexOf('冷藏') >= 0) { tMin = 0; tMax = 10; }
+    else if (loc.indexOf('室温') >= 0) { tMin = 0; tMax = 35; }
+	else if (loc.indexOf('常温') >= 0) { tMin = 0; tMax = 35; }
+	else if (loc.indexOf('实验室') >= 0) { tMin = 0; tMax = 35; }
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData[loc].labels,
+            datasets: [
+                {label: '温度℃', data: chartData[loc].temp, borderColor: '#e74c3c', yAxisID: 'y', fill: false},
+                {label: '湿度%', data: chartData[loc].humidity, borderColor: '#3498db', yAxisID: 'y1', fill: false}
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {type: 'linear', position: 'left', title: {display: true, text: '温度℃'},
+                    suggestedMin: tMin, suggestedMax: tMax, ticks: {stepSize: 1}},
+                y1: {type: 'linear', position: 'right', title: {display: true, text: '湿度%'},
+                    suggestedMin: 20, suggestedMax: 80, grid: {drawOnChartArea: false}}
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

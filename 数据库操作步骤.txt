@@ -1,0 +1,22 @@
+
+inventory	库存表
+pack_use	包装使用记录
+reagent_category	试剂分类表
+reagent_info	试剂信息表
+reagent_pack	所有试剂包装明细表（包括已经出库使用、报废，必须先删这个）
+stock_check	盘点主表
+stock_check_item	盘点明细
+stock_in	入库单主表
+stock_out	出库单主表
+storage_location	存放位置表
+supplier	供应商表
+sys_oper_log	系统操作日志
+sys_user	系统用户表
+temp_location	临时存放位置
+temp_record	临时记录
+
+
+pack_use --> reagent_pack --> stock_in
+有使用记录就先删除使用记录，没有就直接删除试剂明细表（相当于清空库存） 再删除入库表
+
+reagent_pack删不掉是因为有使用了pack_use

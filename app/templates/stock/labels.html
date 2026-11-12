@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}条码标签打印{% endblock %}
+{% block page_title %}条码标签打印{% endblock %}
+
+{% block head %}
+<style>
+    /* ===== 屏幕预览（网页显示）：用像素布局，避免不同系统 DPI 下 mm 换算差异导致内容被裁剪 ===== */
+    @media screen {
+        .label-card {
+            display: inline-flex; flex-direction: column; align-items: center;
+            margin: 6px;
+        }
+        .label {
+            width: 190px; height: 114px; padding: 5px 7px; box-sizing: border-box;
+            overflow: hidden; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
+            border: 1px dashed #bbb; background: #fff;
+        }
+        .l-name {
+            font-size: 12px; font-weight: 700; line-height: 1.2; width: 100%;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .l-meta { font-size: 10px; line-height: 1.3; color: #333; white-space: nowrap; }
+        .l-wrap { display: flex; flex-wrap: wrap; justify-content: flex-start; }
+        .barcode { max-width: 100%; }
+        .btn-reprint { margin-top: 4px; font-size: 12px; }
+    }
+    /* ===== 打印：50mm × 30mm 标签纸（佳博 TSC TDP-245）。
+         标签内容尺寸故意比纸张略小（49.5 × 29.5mm），留 0.5mm 安全边距，
+         避免不同系统/浏览器字体渲染行高差异造成的亚毫米溢出被分页到空白第二页。 ===== */
+    @media print {
+        @page { size: 50mm 30mm; margin: 0; }
+        .label {
+            width: 49.5mm; height: 29.5mm; padding: 1mm 1.5mm; box-sizing: border-box;
+            overflow: hidden; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
+            border: none; margin: 0; background: #fff; page-break-after: always;
+        }
+        /* 最后一枚标签后不再分页，避免批量打印多出一张空白页 */
+        .label-card:last-child .label { page-break-after: auto; }
+        /* 单枚补打：目标标签打印后不再分页，避免出现空白第二页（兼容老版 Chrome） */
+        .label.print-single { page-break-after: auto !important; }
+        /* 单枚补打：仅打印目标标签 */
+        .label.print-hidden { display: none !important; }
+        .l-name {
+            font-size: 7pt; font-weight: 700; line-height: 1.0; width: 100%;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .l-meta { font-size: 6pt; line-height: 1.05; color: #333; white-space: nowrap; }
+        .l-wrap { display: block; }
+        .barcode { max-width: 100%; }
+        .toolbar, .sidebar, .topbar, .page-title-bar, .no-print, .btn-reprint { display: none !important; }
+        .main-wrapper, .page-content { margin: 0 !important; padding: 0 !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card toolbar no-print">
+    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+        <div>
+            <h5 class="mb-1"><i class="bi bi-printer"></i> 入库单 {{ si.order_no }} 的条码标签
+                <span class="badge bg-primary">{{ packs|length }} 枚</span>
+            </h5>
+            <div class="text-muted small">
+                {{ si.reagent.name }} ｜ 批号 {{ si.batch_no }} ｜ 效期 {{ si.expire_date.strftime('%Y-%m-%d') }}
+            </div>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> 打印全部标签</button>
+            <a class="btn btn-light" href="{{ url_for('stock_in.in_detail', sid=si.id) }}">返回到入库单</a>
+        </div>
+    </div>
+    <div class="alert alert-warning mx-3 mb-3 small no-print">
+        <b>打印机设置：</b>请在打印对话框中选择
+        <b>GP-3120TN</b>，纸张/标签规格选 <b>50mm × 30mm</b>，
+        边距设为"无"，缩放设为 100%（实际大小），方向选纵向。每枚标签打印一张，撕下后粘贴于试剂包装侧面。<br>
+        <b>补打单张：</b>标签有破损或缺漏时，点对应标签下方的 <b>「补打」</b> 按钮，只打印那一枚。
+    </div>
+</div>
+
+<div class="l-wrap">
+    {% for p in packs %}
+    <div class="label-card">
+        <div class="label" data-idx="{{ loop.index0 }}">
+            <div class="l-name">{{ si.reagent.name }}</div>
+            <div class="l-meta">批号 {{ p.batch_no }} ｜ 效期 {{ p.expire_date.strftime('%Y-%m-%d') }}
+                ｜ 1{{ si.reagent.unit }}{{ p.total_units }}{{ si.reagent.small_unit }}</div>
+            <svg class="barcode" data-value="{{ p.barcode }}"></svg>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm btn-reprint no-print" onclick="printSingle({{ loop.index0 }})">
+            <i class="bi bi-file-earmark-plus"></i> 补打
+        </button>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 1) 文字自适应兜底：批号/效期/规格文字若超出标签宽度，自动缩小字号直到完整显示
+    //    （先于条码渲染执行，且不依赖条码库，任何情况下都不会出现文字被裁剪）
+    document.querySelectorAll('.label').forEach(function (label) {
+        var meta = label.querySelector('.l-meta');
+        var name = label.querySelector('.l-name');
+        [meta, name].forEach(function (el) {
+            if (!el) return;
+            var fs = parseFloat(getComputedStyle(el).fontSize);
+            while (el.scrollWidth > label.clientWidth && fs > 4) {
+                fs -= 0.5;
+                el.style.fontSize = fs + 'px';
+            }
+            // 缩小到极限仍放不下时，允许换行保证内容完整显示（宁可换行也不裁切）
+            if (el.scrollWidth > label.clientWidth) {
+                el.style.whiteSpace = 'normal';
+                el.style.wordBreak = 'break-word';
+            }
+        });
+    });
+
+    // 2) 条码渲染：独立 try/catch，条码库加载失败也不影响上方文字显示
+    try {
+        document.querySelectorAll('.barcode').forEach(function (svg) {
+            JsBarcode(svg, svg.dataset.value, {
+                format: 'CODE128',
+                lineColor: '#000',
+                width: 1.4,
+                height: 34,
+                displayValue: true,
+                fontSize: 12,
+                margin: 1,
+                textMargin: 1
+            });
+        });
+    } catch (e) {
+        console.error('条码渲染失败（不影响标签文字显示）:', e);
+    }
+
+    // 3) 单枚补打：只打印指定序号的标签
+    function printSingle(idx) {
+        var labels = document.querySelectorAll('.label');
+        labels.forEach(function (l, i) {
+            l.classList.toggle('print-hidden', i !== idx);
+            l.classList.toggle('print-single', i === idx);
+        });
+        window.print();
+        // 打印对话框关闭后恢复所有标签显示
+        labels.forEach(function (l) {
+            l.classList.remove('print-hidden');
+            l.classList.remove('print-single');
+        });
+    }
+</script>
+{% endblock %}

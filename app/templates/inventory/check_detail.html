@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}盘点单详情{% endblock %}
+{% block page_title %}盘点单 {{ check.check_no }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-clipboard-data me-2"></i>盘点明细
+            {% if check.status==0 %}<span class="badge badge-soft-warning ms-2">盘点中</span>
+            {% else %}<span class="badge badge-soft-success ms-2">已完成</span>{% endif %}
+        </h5>
+        <span class="ms-auto small text-muted">
+            盘点人：{{ check.operator.real_name if check.operator else '-' }} ｜
+            创建：{{ check.create_time.strftime('%Y-%m-%d') }}
+        </span>
+    </div>
+    <div class="card-body p-0">
+        {% if check.status==0 %}
+        <form id="checkForm" method="post" action="{{ url_for('inventory.check_finish', cid=check.id) }}">
+        {% endif %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr>
+                <th style="width:60px;">序号</th><th>试剂</th><th>批号</th><th>效期</th>
+                <th>系统数量</th><th style="width:170px;">实际数量</th><th>差异</th>
+            </tr></thead>
+            <tbody>
+            {% for d in check.items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td class="cell-main">{{ d.reagent.name if d.reagent else '-' }}</td>
+                <td>{{ d.batch_no }}</td>
+                <td>{{ d.expire_date.strftime('%Y-%m-%d') if d.expire_date else '-' }}</td>
+                <td>{{ d.system_qty }}</td>
+                <td>
+                    {% if check.status==0 %}
+                    <input type="number" class="form-control form-control-sm actual-input"
+                           data-system="{{ d.system_qty }}"
+                           name="actual_{{ d.id }}"
+                           value="{{ d.actual_qty if d.actual_qty is not none else d.system_qty }}" min="0">
+                    {% else %}{{ d.actual_qty }}{% endif %}
+                </td>
+                <td class="diff-cell" data-diff>
+                    {% set diff = d.diff_qty if d.diff_qty is not none else 0 %}
+                    {% if diff==0 %}<span class="badge badge-soft-secondary">0</span>
+                    {% elif diff>0 %}<span class="badge badge-soft-success">+{{ diff }}</span>
+                    {% else %}<span class="badge badge-soft-danger">{{ diff }}</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% if check.status==0 %}
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> 完成盘点并调整库存</button>
+            <a href="{{ url_for('inventory.check_list') }}" class="btn btn-light">取消</a>
+        </div>
+        </form>
+        {% else %}
+        <div class="card-footer">
+            <a href="{{ url_for('inventory.check_list') }}" class="btn btn-light"><i class="bi bi-arrow-left"></i> 返回列表</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if check.status==0 %}
+<script>
+    document.querySelectorAll('.actual-input').forEach(input => {
+        input.addEventListener('input', () => {
+            const system = parseInt(input.dataset.system || '0', 10);
+            const actual = parseInt(input.value || '0', 10);
+            const diff = actual - system;
+            const cell = input.closest('tr').querySelector('[data-diff]');
+            if (diff === 0) cell.innerHTML = '<span class="badge badge-soft-secondary">0</span>';
+            else if (diff > 0) cell.innerHTML = '<span class="badge badge-soft-success">+' + diff + '</span>';
+            else cell.innerHTML = '<span class="badge badge-soft-danger">' + diff + '</span>';
+        });
+    });
+</script>
+{% endif %}
+{% endblock %}

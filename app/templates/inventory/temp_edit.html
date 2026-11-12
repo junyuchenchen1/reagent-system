@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}编辑温湿度记录{% endblock %}
+{% block page_title %}编辑温湿度记录{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">位置</label>
+                <input class="form-control" value="{{ rec.location }}" disabled>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">日期</label>
+                <input class="form-control" value="{{ rec.record_date }}" disabled>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">温度℃</label>
+                    <input type="number" step="0.1" class="form-control" name="am_temp" value="{{ rec.am_temp or '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">湿度%</label>
+                    <input type="number" step="0.1" class="form-control" name="humidity" value="{{ rec.humidity or '' }}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">备注</label>
+                <input class="form-control" name="note" value="{{ rec.note or '' }}">
+            </div>
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> 保存</button>
+            <a class="btn btn-light" href="{{ url_for('inventory.temp_list') }}">返回</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}试剂档案{% endblock %}
+{% block page_title %}试剂档案{% endblock %}
+
+{% block content %}
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:240px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索试剂名称">
+    </div>
+    <select class="form-select" name="category_id" style="max-width:160px;">
+        <option value="">全部分类</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {{ 'selected' if category_id == c.id|string }}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <select class="form-select" name="mfr" style="max-width:200px;">
+        <option value="">全部厂家</option>
+        {% for m in manufacturers %}
+        <option value="{{ m }}" {{ 'selected' if mfr == m }}>{{ m }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('basic.reagent_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    {% if current_user.is_manager %}
+    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增试剂</button>
+    {% endif %}
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-hover">
+            <thead><tr><th>试剂名称</th><th>生产企业</th><th>规格</th><th>包装规格</th><th>存储条件</th><th>在库 / 在用</th><th>最低预警</th><th>状态</th><th style="width:160px;">操作</th></tr></thead>
+            <tbody>
+            {% for r in items %}
+            <tr>
+                <td>
+                    <div class="cell-main">{{ r.name }}
+                        {% if r.is_hazard %}<span class="badge badge-soft-danger ms-1">危</span>{% endif %}
+                    </div>
+                    <div class="cell-sub">{{ r.category.name if r.category else '未分类' }}</div>
+                </td>
+                <td>{{ r.registrant or '-' }}</td>
+                <td>{{ r.spec or '-' }}</td>
+                <td><span class="fw-bold">1 {{ r.unit }} = {{ r.pack_size or 1 }} {{ r.small_unit }}</span></td>
+                <td><span class="badge badge-soft-primary">{{ r.storage_condition }}</span></td>
+                <td>
+                    <div class="cell-main {% if r.in_stock_boxes <= r.min_stock %}text-danger{% endif %}">
+                        {{ r.in_stock_boxes }} {{ r.unit }}
+                    </div>
+                    <div class="cell-sub text-info">已出库未用 {{ r.in_use_units }} {{ r.small_unit }}</div>
+                </td>
+                <td>{{ r.min_stock }} {{ r.unit }}</td>
+                <td>
+                    {% if r.status == 1 %}<span class="badge badge-soft-success">启用</span>
+                    {% else %}<span class="badge badge-soft-secondary">停用</span>{% endif %}
+                </td>
+                <td>
+                    {% if current_user.is_manager %}
+                    <button class="btn btn-sm btn-light"
+                        data-id="{{ r.id }}" data-name="{{ r.name }}"
+                        data-category="{{ r.category_id or '' }}" data-spec="{{ r.spec }}"
+                        data-unit="{{ r.unit }}"
+                        data-packsize="{{ r.pack_size or 1 }}" data-smallunit="{{ r.small_unit or '瓶' }}"
+                        data-min="{{ r.min_stock }}"
+                        data-warning="{{ r.expire_warning_days }}"
+                        data-storage="{{ r.storage_condition }}"
+                        data-hazard="{{ r.is_hazard }}" data-status="{{ r.status }}"
+                        data-regno="{{ r.reg_no or '' }}"
+                        data-regexp="{{ r.reg_expire_date.strftime('%Y-%m-%d') if r.reg_expire_date else '' }}"
+                        data-registrant="{{ r.registrant or '' }}"
+                        data-agent="{{ r.agent or '' }}"
+                        data-cert="{{ r.cert_image or '' }}"
+                        data-remark="{{ r.remark }}" onclick="editItem(this)"><i class="bi bi-pencil"></i> 编辑</button>
+                    <button class="btn btn-sm btn-light text-danger" onclick="confirmAction('{{ url_for('basic.reagent_delete') }}',{{ r.id }},'确定删除试剂「{{ r.name }}」吗？（存在库存时将无法删除）')"><i class="bi bi-trash"></i></button>
+                    {% else %}<span class="text-muted-2 small">-</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-list-ul"></i>暂无试剂数据</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('basic.reagent_save') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增试剂</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="f_id">
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label class="form-label required">试剂名称</label>
+                            <input class="form-control" name="name" id="f_name" required></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">所属分类</label>
+                            <select class="form-select" name="category_id" id="f_category">
+                                <option value="">请选择</option>
+                                {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            </select></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">规格</label>
+                            <input class="form-control" name="spec" id="f_spec" placeholder="如 R1 50ml×2"></div>
+                        <div class="col-md-2 mb-3"><label class="form-label">大包装单位</label>
+                            <input class="form-control" name="unit" id="f_unit" value="盒" placeholder="盒/箱/袋/桶/包"></div>
+                        <div class="col-md-2 mb-3"><label class="form-label required">每包装数量</label>
+                            <input type="number" min="1" class="form-control" name="pack_size" id="f_packsize" value="1" required></div>
+                        <div class="col-md-2 mb-3"><label class="form-label">最小单位</label>
+                            <input class="form-control" name="small_unit" id="f_smallunit" value="瓶" placeholder="瓶/支/个/ml"></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">最低库存(大包装)</label>
+                            <input type="number" class="form-control" name="min_stock" id="f_min" value="10"></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">效期预警(天)</label>
+                            <input type="number" class="form-control" name="expire_warning_days" id="f_warning" value="90"></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">存储条件</label>
+                            <select class="form-select" name="storage_condition" id="f_storage">
+                                {% for s in ['常温','冷藏','冷冻'] %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                            </select></div>
+                        <div class="col-md-6 mb-3 d-flex align-items-end gap-4">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="is_hazard" value="1" id="f_hazard">
+                                <label class="form-check-label" for="f_hazard">危险试剂</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="status" value="1" id="f_status" checked>
+                                <label class="form-check-label" for="f_status">启用</label>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="col-md-4 mb-3"><label class="form-label">医疗器械注册证编号</label>
+                            <input class="form-control" name="reg_no" id="f_regno" placeholder="如 国械注准20243400123"></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">注册证有效期</label>
+                            <input type="date" class="form-control" name="reg_expire_date" id="f_regexp"></div>
+                        <div class="col-md-5 mb-3"><label class="form-label">注册人 / 生产企业</label>
+                            <input class="form-control" name="registrant" id="f_registrant" placeholder="如 迈瑞医疗（深圳）有限公司"></div>
+                        <div class="col-md-5 mb-3"><label class="form-label">代理人（进口试剂填）</label>
+                            <input class="form-control" name="agent" id="f_agent" placeholder="国产试剂可留空"></div>
+                        <div class="col-md-7 mb-3"><label class="form-label">注册证图片（PNG/JPG）</label>
+                            <input type="file" class="form-control" name="cert_image" accept=".png,.jpg,.jpeg,.bmp">
+                            <div class="form-text" id="certHint"></div></div>
+                        <div class="col-12 mb-3"><label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" id="f_remark" rows="2"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modalEl = document.getElementById('editModal');
+    function openModal() {
+        document.getElementById('f_id').value = '';
+        ['name','spec','remark'].forEach(k => document.getElementById('f_' + k).value = '');
+        document.getElementById('f_category').value = '';
+        document.getElementById('f_unit').value = '盒';
+        document.getElementById('f_packsize').value = '1';
+        document.getElementById('f_smallunit').value = '瓶';
+        document.getElementById('f_min').value = '1';
+        document.getElementById('f_warning').value = '90';
+        document.getElementById('f_storage').value = '冷藏';
+        document.getElementById('f_hazard').checked = false;
+        document.getElementById('f_status').checked = true;
+        document.getElementById('f_regno').value = '';
+        document.getElementById('f_regexp').value = '';
+        document.getElementById('f_registrant').value = '';
+        document.getElementById('f_agent').value = '';
+        document.getElementById('certHint').innerHTML = '';
+        document.getElementById('modalTitle').textContent = '新增试剂';
+        new bootstrap.Modal(modalEl).show();
+    }
+    function editItem(btn) {
+        const d = btn.dataset;
+        document.getElementById('f_id').value = d.id;
+        document.getElementById('f_name').value = d.name || '';
+        document.getElementById('f_category').value = d.category || '';
+        document.getElementById('f_spec').value = d.spec || '';
+        document.getElementById('f_unit').value = d.unit || '盒';
+        document.getElementById('f_packsize').value = d.packsize || '1';
+        document.getElementById('f_smallunit').value = d.smallunit || '瓶';
+        document.getElementById('f_min').value = d.min || '0';
+        document.getElementById('f_warning').value = d.warning || '90';
+        document.getElementById('f_storage').value = d.storage || '常温';
+        document.getElementById('f_hazard').checked = d.hazard === '1';
+        document.getElementById('f_status').checked = d.status === '1';
+        document.getElementById('f_regno').value = d.regno || '';
+        document.getElementById('f_regexp').value = d.regexp || '';
+        document.getElementById('f_registrant').value = d.registrant || '';
+        document.getElementById('f_agent').value = d.agent || '';
+        document.getElementById('certHint').innerHTML = d.cert
+            ? '<a href="/basic/cert/' + d.cert + '" target="_blank"><i class="bi bi-image"></i> 查看已上传的注册证图片</a>（重新上传将覆盖）'
+            : '';
+        document.getElementById('f_remark').value = d.remark || '';
+        document.getElementById('modalTitle').textContent = '编辑试剂';
+        new bootstrap.Modal(modalEl).show();
+    }
+</script>
+{% endblock %}

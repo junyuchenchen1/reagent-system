@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block title %}试剂入库{% endblock %}
+{% block page_title %}试剂入库{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h5><i class="bi bi-box-arrow-in-down"></i> 填写入库信息</h5>
+        <a class="btn btn-light btn-sm" href="{{ url_for('stock_in.in_list') }}">返回列表</a>
+    </div>
+    <div class="card-body">
+        <form method="post" id="inForm">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">试剂分类（筛选）</label>
+                    <select class="form-select" id="categoryFilter">
+                        <option value="">全部分类</option>
+                        {% for c in categories %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">生产企业（筛选）</label>
+                    <select class="form-select" id="mfrFilter">
+                        <option value="">全部厂家</option>
+                        {% for m in manufacturers %}
+                        <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label required">选择试剂</label>
+                    <select class="form-select" name="reagent_id" id="reagent" required>
+                        <option value="">请先选择试剂</option>
+                        {% for r in reagents %}
+                        <option value="{{ r.id }}" data-category="{{ r.category_id or '' }}"
+                            data-mfr="{{ r.registrant or '' }}"
+                            data-packsize="{{ r.pack_size or 1 }}" data-unit="{{ r.unit }}" data-smallunit="{{ r.small_unit }}">
+                            {{ r.name }}{% if r.registrant %}（{{ r.registrant }}）{% endif %}（{{ r.spec or '无规格' }}，1{{ r.unit }}={{ r.pack_size or 1 }}{{ r.small_unit }}）
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="alert alert-info py-2 px-3 mt-2 mb-0 small" id="packTip">
+                        <i class="bi bi-info-circle"></i> 请选择试剂，系统将按数量为每包装生成唯一条码
+                    </div>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <label class="form-label required">批号</label>
+                    <input class="form-control" name="batch_no" required placeholder="如 072610A">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label required">有效期</label>
+                    <input type="date" class="form-control" name="expire_date" required>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label required">入库数量</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="quantity" id="quantity"
+                               min="1" value="1" required>
+                        <span class="input-group-text" id="unitSuffix">盒</span>
+                    </div>
+                    <div class="form-text" id="barcodeHint"></div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label" id="priceLabel">每盒单价（元）</label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="unit_price" value="0">
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">供应商</label>
+                    <select class="form-select" name="supplier_id">
+                        <option value="">请选择</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.id }}">{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">存放位置</label>
+                    <select class="form-select" name="storage_location">
+                        <option value="">请选择</option>
+                        {% for l in locations %}
+                        <option value="{{ l.name }}">{{ l.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">位置在【基础数据 → 存放位置】中维护</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">备注</label>
+                    <input class="form-control" name="remark">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label required">验收人（双人验收）</label>
+                    <select class="form-select" name="verifier_id" required>
+                        <option value="">请选择验收人</option>
+                        {% for v in verifiers %}
+                        <option value="{{ v.id }}">{{ v.real_name }}（{{ v.role_name }}）</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">接收状态</label>
+                    <select class="form-select" name="accept_status">
+                        <option value="合格">合格</option>
+                        <option value="破损">破损</option>
+                        <option value="拒收">拒收</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="alert alert-warning small">
+                <i class="bi bi-printer"></i>
+                入库后将按盒数生成对应数量的 <b>10 位条码标签</b>（每盒一枚），可直接打印为
+                50mm×30mm 条形码贴于试剂盒，供后续扫码出库与使用。
+            </div>
+
+            <div class="mt-2">
+                <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> 提交入库</button>
+                <a class="btn btn-light" href="{{ url_for('stock_in.in_list') }}">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const reagentSel = document.getElementById('reagent');
+    const categorySel = document.getElementById('categoryFilter');
+    const mfrSel = document.getElementById('mfrFilter');
+    const quantityInput = document.getElementById('quantity');
+
+    function applyFilter() {
+        const cat = categorySel.value;
+        const mfr = mfrSel.value;
+        // 只有选了厂家时，才反向过滤分类下拉
+        if (mfr) {
+            var validCats = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.mfr === mfr && opt.dataset.category) {
+                    validCats.add(opt.dataset.category);
+                }
+            });
+            Array.from(categorySel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validCats.has(opt.value);
+            });
+            if (categorySel.value && !validCats.has(categorySel.value)) categorySel.value = '';
+        } else {
+            // 没选厂家，分类全部显示
+            Array.from(categorySel.options).forEach(opt => { opt.hidden = false; });
+        }
+        // 只有选了分类时，才反向过滤厂家下拉
+        if (cat) {
+            var validMfrs = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.category === cat && opt.dataset.mfr) {
+                    validMfrs.add(opt.dataset.mfr);
+                }
+            });
+            Array.from(mfrSel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validMfrs.has(opt.value);
+            });
+            if (mfrSel.value && !validMfrs.has(mfrSel.value)) mfrSel.value = '';
+        } else {
+            Array.from(mfrSel.options).forEach(opt => { opt.hidden = false; });
+        }
+
+        // 过滤试剂下拉
+        var fCat = categorySel.value;
+        var fMfr = mfrSel.value;
+        Array.from(reagentSel.options).forEach(opt => {
+            if (!opt.value) return;
+            const catOk = !fCat || opt.dataset.category === fCat;
+            const mfrOk = !fMfr || opt.dataset.mfr === fMfr;
+            opt.hidden = !(catOk && mfrOk);
+        });
+        reagentSel.value = '';
+        updateTip();
+    }
+    categorySel.addEventListener('change', applyFilter);
+    mfrSel.addEventListener('change', applyFilter);
+
+    function updateTip() {
+        const opt = reagentSel.options[reagentSel.selectedIndex];
+        const tip = document.getElementById('packTip');
+        const hint = document.getElementById('barcodeHint');
+        const unitSuffix = document.getElementById('unitSuffix');
+        const priceLabel = document.getElementById('priceLabel');
+        if (opt && opt.value) {
+            const ps = opt.dataset.packsize;
+            const u = opt.dataset.unit || '盒';
+            const su = opt.dataset.smallunit || '瓶';
+            tip.innerHTML = '<i class="bi bi-box-seam"></i> 该试剂每<b>' + u + '</b>含 <b>' + ps + '</b> ' + su;
+            unitSuffix.textContent = u;
+            priceLabel.textContent = '每' + u + '单价（元）';
+            updateHint();
+        } else {
+            tip.innerHTML = '<i class="bi bi-info-circle"></i> 请选择试剂，系统将按数量为每包装生成唯一条码';
+            unitSuffix.textContent = '盒';
+            priceLabel.textContent = '每盒单价（元）';
+            hint.textContent = '';
+        }
+    }
+    function updateHint() {
+        const q = parseInt(quantityInput.value) || 0;
+        const hint = document.getElementById('barcodeHint');
+        hint.innerHTML = q > 0 ? '将生成 <b class="text-primary">' + q + '</b> 枚条码并打印' : '';
+    }
+    reagentSel.addEventListener('change', updateTip);
+    quantityInput.addEventListener('input', updateHint);
+</script>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}首页仪表盘{% endblock %}
+{% block page_title %}首页仪表盘{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-primary"><i class="bi bi-droplet-half"></i></div>
+            <div><div class="stat-value">{{ stats.reagent_count }}</div>
+                <div class="stat-label">试剂种类</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-info"><i class="bi bi-boxes"></i></div>
+            <div><div class="stat-value">{{ stats.in_stock_boxes }}</div>
+                <div class="stat-label">在库包装数</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-success"><i class="bi bi-box-arrow-in-down"></i></div>
+            <div><div class="stat-value">{{ stats.today_in_qty }}</div>
+                <div class="stat-label">今日入库</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-primary"><i class="bi bi-box-arrow-up"></i></div>
+            <div><div class="stat-value">{{ stats.today_out_qty }}</div>
+                <div class="stat-label">今日出库</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-warning"><i class="bi bi-hourglass-split"></i></div>
+            <div><div class="stat-value">{{ stats.warning_count }}</div>
+                <div class="stat-label">临期批次</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card">
+            <div class="stat-icon ic-danger"><i class="bi bi-x-octagon"></i></div>
+            <div><div class="stat-value">{{ stats.expire_count }}</div>
+                <div class="stat-label">过期批次</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表 -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-8">
+        <div class="card h-100">
+            <div class="card-header"><h5><i class="bi bi-graph-up me-2"></i>近 30 天出入库趋势</h5></div>
+            <div class="card-body"><div id="trendChart" class="chart-box"></div></div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="card h-100">
+            <div class="card-header"><h5><i class="bi bi-pie-chart me-2"></i>各分类在库占比</h5></div>
+            <div class="card-body"><div id="pieChart" class="chart-box"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 预警与低库存 -->
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5><i class="bi bi-exclamation-triangle text-warning me-2"></i>效期预警（前 10 条）</h5>
+                <a href="{{ url_for('inventory.warning') }}" class="ms-auto small">全部 <i class="bi bi-chevron-right"></i></a>
+            </div>
+            <div class="card-body p-0">
+                {% if warnings %}
+                <table class="table">
+                    <thead><tr><th>试剂</th><th>批号</th><th>有效期</th><th>状态</th></tr></thead>
+                    <tbody>
+                    {% for w in warnings %}
+                    <tr>
+                        <td class="cell-main">{{ w.reagent.name }}</td>
+                        <td>{{ w.batch_no }}</td>
+                        <td>{{ w.expire_date.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            {% if w.status == 'expired' %}
+                            <span class="badge badge-soft-danger">已过期</span>
+                            {% else %}
+                            <span class="badge badge-soft-warning">剩 {{ w.days }} 天</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty"><i class="bi bi-emoji-smile"></i>暂无临期或过期试剂</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5><i class="bi bi-bell text-danger me-2"></i>库存不足预警（前 10 条）</h5>
+                <a href="{{ url_for('inventory.warning') }}" class="ms-auto small">全部 <i class="bi bi-chevron-right"></i></a>
+            </div>
+            <div class="card-body p-0">
+                {% if low_stock %}
+                <table class="table">
+                    <thead><tr><th>试剂</th><th>当前在库</th><th>最低预警</th><th>建议</th></tr></thead>
+                    <tbody>
+                    {% for r in low_stock %}
+                    <tr>
+                        <td class="cell-main">{{ r.reagent.name }}</td>
+                        <td>{{ r.current }} {{ r.reagent.unit }}</td>
+                        <td>{{ r.min }} {{ r.reagent.unit }}</td>
+                        <td><span class="badge badge-soft-danger">{{ r.suggestion }}</span></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty"><i class="bi bi-emoji-smile"></i>库存均充足</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/js/echarts.min.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+    const trend = {{ trend | tojson }};
+    const trendChart = echarts.init(document.getElementById('trendChart'));
+    trendChart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['入库', '出库'], right: 10, top: 0 },
+        grid: { left: 40, right: 20, top: 40, bottom: 30 },
+        xAxis: { type: 'category', boundaryGap: false, data: trend.labels,
+                 axisLine: { lineStyle: { color: '#E5E6EB' } }, axisLabel: { color: '#86909C' } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: '#F2F3F5' } }, axisLabel: { color: '#86909C' } },
+        series: [
+            { name: '入库', type: 'line', smooth: true, data: trend.in, showSymbol: false,
+              lineStyle: { width: 3, color: '#00B42A' },
+              areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                  {offset:0,color:'rgba(0,180,42,0.25)'},{offset:1,color:'rgba(0,180,42,0)'}]) } },
+            { name: '出库', type: 'line', smooth: true, data: trend.out, showSymbol: false,
+              lineStyle: { width: 3, color: '#165DFF' },
+              areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                  {offset:0,color:'rgba(22,93,250,0.25)'},{offset:1,color:'rgba(22,93,250,0)'}]) } }
+        ]
+    });
+
+    const pie = {{ category_stock | tojson }};
+    const pieChart = echarts.init(document.getElementById('pieChart'));
+    pieChart.setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {c} 包装 ({d}%)' },
+        legend: { bottom: 0, textStyle: { color: '#4E5969' } },
+        color: ['#165DFF','#00B42A','#FF7D00','#0FC6C2','#F53F3F','#722ED1','#F7BA1E'],
+        series: [{
+            type: 'pie', radius: ['42%', '68%'], center: ['50%', '45%'],
+            itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 6 },
+            label: { show: false }, labelLine: { show: false },
+            data: pie
+        }]
+    });
+    window.addEventListener('resize', () => { trendChart.resize(); pieChart.resize(); });
+</script>
+{% endblock %}

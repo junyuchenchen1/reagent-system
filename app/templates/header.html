@@ -1,0 +1,34 @@
+<header class="topbar">
+    <span class="toggle-btn" id="sidebarToggle"><i class="bi bi-list"></i></span>
+    <span class="page-title">{% block page_title %}首页{% endblock %}</span>
+
+    <div class="topbar-right">
+        <a class="icon-btn" href="{{ url_for('inventory.warning') }}" title="效期预警" data-bs-toggle="tooltip">
+            <i class="bi bi-bell"></i>
+            {% if (pending_in + pending_out) > 0 %}<span class="dot"></span>{% endif %}
+        </a>
+
+        <div class="dropdown">
+            <div class="user-chip" data-bs-toggle="dropdown">
+                <span class="avatar">{{ current_user.real_name[:1] }}</span>
+                <div>
+                    <div class="u-name">{{ current_user.real_name }}</div>
+                    <div class="u-role">{{ current_user.role_name }}</div>
+                </div>
+                <i class="bi bi-chevron-down text-muted-2"></i>
+            </div>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><span class="dropdown-item-text text-muted-2 small">
+                    <i class="bi bi-person-badge"></i> {{ current_user.department }}
+                </span></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
+                    <i class="bi bi-key"></i> 修改密码</a></li>
+                <li><form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+                    <button type="submit" class="dropdown-item text-danger">
+                        <i class="bi bi-box-arrow-right"></i> 退出登录</button>
+                </form></li>
+            </ul>
+        </div>
+    </div>
+</header>

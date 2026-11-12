@@ -1,0 +1,20 @@
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>操作确认</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <form id="confirmForm" method="post">
+                <div class="modal-body">
+                    <p id="confirmText" class="mb-0 text-secondary">确定要执行此操作吗？此操作不可撤销。</p>
+                    <input type="hidden" name="id" id="confirmId">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认执行</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

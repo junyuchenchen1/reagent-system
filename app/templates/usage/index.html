@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}在用试剂{% endblock %}
+{% block page_title %}已出库未使用（科室在用）{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon ic-primary"><i class="bi bi-box2-heart"></i></div>
+            <div><div class="stat-value">{{ total_boxes }}</div>
+                <div class="stat-label">在用包装数（已出库）</div></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon ic-success"><i class="bi bi-droplet-half"></i></div>
+            <div><div class="stat-value">{{ total_units }}</div>
+                <div class="stat-label">已出库未使用（最小单位）</div></div>
+        </div>
+    </div>
+</div>
+
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:240px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}"
+               placeholder="试剂名 / 条码 / 批号">
+    </div>
+    <select class="form-select" name="category_id" style="max-width:160px;">
+        <option value="">全部分类</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {{ 'selected' if category_id == c.id|string }}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <select class="form-select" name="mfr" style="max-width:180px;">
+        <option value="">全部厂家</option>
+        {% for m in manufacturers %}
+        <option value="{{ m }}" {{ 'selected' if mfr == m }}>{{ m }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('usage.index') }}">重置</a>
+    <a class="btn btn-success ms-auto" href="{{ url_for('usage.add') }}"><i class="bi bi-upc-scan"></i> 使用登记</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-list-columns me-2"></i>科室在用试剂</h5>
+        <a class="btn btn-sm btn-light ms-auto"
+           href="{{ url_for('usage.records_export', keyword=keyword) }}"><i class="bi bi-file-earmark-excel"></i> 导出使用记录</a>
+    </div>
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr>
+                <th>试剂</th><th>条码</th><th>批号 / 效期</th><th>每包装</th>
+                <th>已用 / 剩余</th><th>状态</th><th>接收科室/人</th><th>出库时间</th>
+                <th style="width:120px;">操作</th>
+            </tr></thead>
+            <tbody>
+            {% for p in pagination.items %}
+            <tr>
+                <td class="cell-main">{{ p.reagent.name }}
+                    <div class="cell-sub">{{ p.reagent.category.name if p.reagent.category else '' }}</div>
+                </td>
+                <td><span class="font-monospace">{{ p.barcode }}</span></td>
+                <td>{{ p.batch_no }}
+                    <div class="cell-sub {{ 'text-danger' if p.days_left < 0 else '' }}">
+                        {{ p.expire_date.strftime('%Y-%m-%d') }}（{{ p.expire_text }}）
+                    </div>
+                </td>
+                <td>{{ p.total_units }} {{ p.reagent.small_unit }}</td>
+                <td>
+                    <span class="text-muted">{{ p.used_units }}</span> /
+                    <span class="fw-bold text-success">{{ p.remaining_units }} {{ p.reagent.small_unit }}</span>
+                    <div class="progress mt-1" style="height:5px;">
+                        <div class="progress-bar bg-success"
+                             style="width:{{ (p.remaining_units / p.total_units * 100)|round }}%"></div>
+                    </div>
+                </td>
+                <td>
+                    {% if p.status == 'using' %}<span class="badge badge-soft-primary">使用中（已开封）</span>
+                    {% else %}<span class="badge badge-soft-warning">已出库（未开封）</span>{% endif %}
+                </td>
+                <td>{{ p.receiver or '-' }}</td>
+                <td class="cell-sub">{{ p.issued_time.strftime('%Y-%m-%d %H:%M') if p.issued_time else '-' }}</td>
+                <td>
+                    <a class="btn btn-sm btn-success"
+                       href="{{ url_for('usage.add') }}?barcode={{ p.barcode }}">
+                        <i class="bi bi-upc-scan"></i> 使用
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-inbox"></i>暂无已出库未使用的试剂</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'usage.index') }}
+{% endblock %}

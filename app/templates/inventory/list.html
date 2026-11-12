@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}实时库存{% endblock %}
+{% block page_title %}实时库存（中心在库）{% endblock %}
+
+{% block content %}
+<form class="search-bar row g-2" method="get">
+    <div class="col-md-3"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="试剂名 / 批号"></div>
+    <div class="col-md-2">
+        <select class="form-select" name="category_id">
+            <option value="">全部分类</option>
+            {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category_id==c.id|string }}>{{ c.name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="mfr">
+            <option value="">全部厂家</option>
+            {% for m in manufacturers %}<option value="{{ m }}" {{ 'selected' if mfr==m }}>{{ m }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="storage">
+            <option value="">存储条件</option>
+            {% for s in storage_choices %}<option value="{{ s }}" {{ 'selected' if storage==s }}>{{ s }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="status">
+            <option value="">全部状态</option>
+            <option value="normal" {{ 'selected' if status=='normal' }}>正常</option>
+            <option value="warning" {{ 'selected' if status=='warning' }}>临期</option>
+            <option value="expired" {{ 'selected' if status=='expired' }}>过期</option>
+        </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+        <a class="btn btn-light" href="{{ url_for('inventory.stock_list') }}">重置</a>
+    </div>
+    <div class="col-md-2 ms-auto text-end">
+        {% if current_user.is_manager %}
+        <a class="btn btn-light" href="{{ url_for('inventory.stock_export') }}"><i class="bi bi-file-earmark-excel"></i> 导出</a>
+        {% endif %}
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header"><h5><i class="bi bi-boxes me-2"></i>库存明细（按批号 / 包装）</h5></div>
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr>
+                <th>试剂</th><th>批号</th><th>包装规格</th><th>效期 / 剩余天数</th>
+                <th>在库</th><th>已出库未用</th><th>存储 / 位置</th><th>性能验证</th><th>状态</th>
+                <th style="width:104px; white-space:nowrap;">操作</th>
+            </tr></thead>
+            <tbody>
+            {% for i in pagination.items %}
+            <tr>
+                <td>
+                    <div class="cell-main">{{ i.reagent.name }}</div>
+                    <div class="cell-sub">{{ i.reagent.category.name if i.reagent.category else '未分类' }} · {{ i.reagent.spec or '' }}</div>
+                </td>
+                <td>{{ i.batch_no }}</td>
+                <td>1 {{ i.reagent.unit }} = {{ i.reagent.pack_size or 1 }} {{ i.reagent.small_unit }}</td>
+                <td>
+                    {{ i.expire_date.strftime('%Y-%m-%d') }}
+                    <div class="cell-sub {{ 'text-danger' if i.days_left < 0 else '' }}">{{ i.expire_text }}</div>
+                </td>
+                <td>
+                    <div class="cell-main fw-bold">{{ i.quantity }} {{ i.reagent.unit }}</div>
+                    <div class="cell-sub text-success">{{ i.quantity * i.reagent.pack_size }} {{ i.reagent.small_unit }}</div>
+                </td>
+                <td>
+                    <span class="badge badge-soft-info">{{ used_map.get(i.reagent_id, 0) }} {{ i.reagent.small_unit }}</span>
+                </td>
+                <td class="cell-sub">{{ i.reagent.storage_condition }}<br>{{ i.storage_location or '未指定' }}</td>
+                <td class="text-nowrap">
+                    {% set verified = verify_map.get((i.reagent_id, i.batch_no)) %}
+                    {% if verified %}<span class="badge badge-soft-success">已验证</span>
+                    {% elif current_user.is_manager %}
+                    <button class="btn btn-sm btn-warning text-nowrap" title="标记验证完成"
+                        style="white-space:nowrap;"
+                        onclick="openVerifyModal('{{ url_for('inventory.verify_batch') }}', '{{ i.batch_no }}', {{ i.reagent_id }})">
+                        <i class="bi bi-check2-circle"></i> 验证
+                    </button>
+                    {% else %}<span class="badge badge-soft-warning">未验证</span>{% endif %}
+                </td>
+                <td>
+                    {% if i.stock_status=='normal' %}<span class="badge badge-soft-success">正常</span>
+                    {% elif i.stock_status=='warning' %}<span class="badge badge-soft-warning">临期</span>
+                    {% else %}<span class="badge badge-soft-danger pulse">过期</span>{% endif %}
+                </td>
+                <td class="text-nowrap">
+                    <button class="btn btn-sm btn-outline-primary text-nowrap" data-rid="{{ i.reagent_id }}"
+                            data-batch="{{ i.batch_no }}" onclick="openPacks(this)"
+                            style="white-space:nowrap;"
+                            title="查看每一盒的条形码，可直接出库">
+                        <i class="bi bi-list-ul"></i> 明细
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-boxes"></i>暂无库存数据</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'inventory.stock_list') }}
+
+<div class="modal fade" id="verifyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <form id="verifyForm" method="post">
+                <div class="modal-header"><h5 class="modal-title">性能验证确认</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p id="verifyText"></p>
+                    <input type="hidden" name="reagent_id" id="verifyReagentId">
+                    <input type="hidden" name="batch_no" id="verifyBatchNo">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-warning">确认验证完成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- 单盒明细（条形码级） -->
+<div class="modal fade" id="packsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i><span id="packsTitle">试剂明细</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="packsBody"></div>
+            <div class="modal-footer">
+                <span class="text-muted small me-auto">点「出库」会跳转到出库页并自动锁定该盒，过期盒只能走「报废」。</span>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openVerifyModal(action, batch, reagentId) {
+    document.getElementById('verifyForm').action = action;
+    document.getElementById('verifyText').textContent = '确认批号 ' + batch + ' 已完成性能验证？';
+    document.getElementById('verifyReagentId').value = reagentId;
+    document.getElementById('verifyBatchNo').value = batch;
+    new bootstrap.Modal(document.getElementById('verifyModal')).show();
+}
+
+// ---------- 单盒明细（条形码级） ----------
+let packsModal = null;
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function openPacks(btn) {
+    const rid = btn.dataset.rid;
+    const batch = btn.dataset.batch || '';
+    const body = document.getElementById('packsBody');
+    document.getElementById('packsTitle').textContent = '试剂明细';
+    body.innerHTML = '<div class="text-muted p-3"><span class="spinner-border spinner-border-sm"></span> 正在加载…</div>';
+    if (!packsModal) {
+        packsModal = new bootstrap.Modal(document.getElementById('packsModal'));
+    }
+    packsModal.show();
+    fetch('/inventory/packs/' + rid)
+        .then(function (r) { return r.json(); })
+        .then(function (d) { renderPacks(d, batch); })
+        .catch(function (e) {
+            body.innerHTML = '<div class="alert alert-danger m-3">加载失败：' + esc(e) + '</div>';
+        });
+}
+function renderPacks(d, currentBatch) {
+    const body = document.getElementById('packsBody');
+    if (!d.found) {
+        body.innerHTML = '<div class="alert alert-warning m-3">未找到该试剂</div>';
+        return;
+    }
+    const r = d.reagent, u = r.unit, su = r.small_unit;
+    document.getElementById('packsTitle').textContent = r.name;
+
+    let html = '<div class="border rounded p-2 mb-3 bg-light"><div class="row g-1 small">' +
+        '<div class="col-md-7"><b>' + esc(r.name) + '</b> <span class="text-muted">' + esc(r.spec) + '</span></div>' +
+        '<div class="col-md-5 text-muted">分类：' + esc(r.category) + '</div>' +
+        '<div class="col-md-7 text-muted">生产企业：' + (esc(r.registrant) || '—') + '</div>' +
+        '<div class="col-md-5 text-muted">存储条件：' + esc(r.storage_condition) + '</div>' +
+        '<div class="col-md-7 text-muted">包装：1' + esc(u) + ' = ' + r.pack_size + ' ' + esc(su) + '</div>' +
+        '<div class="col-md-5 text-muted">最低库存：' + r.min_stock + ' ' + esc(u) + '</div>' +
+        (r.reg_no ? '<div class="col-12 text-muted">注册证号：' + esc(r.reg_no) + '</div>' : '') +
+        '</div></div>';
+
+    html += '<div class="d-flex gap-2 mb-2">' +
+        '<span class="badge badge-soft-success">在库 ' + d.in_stock + ' ' + esc(u) + '</span>' +
+        '<span class="badge badge-soft-info">已出库未用完 ' + d.issued_unused + ' ' + esc(u) + '</span>' +
+        '</div>';
+
+    if (!d.packs.length) {
+        html += '<div class="empty py-4"><i class="bi bi-inbox"></i>该试剂当前没有在库的整盒</div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">' +
+        '<thead class="table-light"><tr><th>条形码</th><th>批号</th><th>效期</th><th>剩余天数</th>' +
+        '<th>存放位置</th><th style="width:110px;">操作</th></tr></thead><tbody>';
+
+    d.packs.forEach(function (p) {
+        const isCur = p.batch_no === currentBatch;
+        const dayCls = p.expired ? 'text-danger fw-bold' : (p.days_left <= 90 ? 'text-warning' : '');
+        const tag = p.expired
+            ? '<span class="badge badge-soft-danger">已过期</span>'
+            : (p.days_left <= 90 ? '<span class="badge badge-soft-warning">临期</span>' : '');
+        const action = p.expired
+            ? '<a class="btn btn-sm btn-danger" href="/stock-out/add?barcode=' +
+              encodeURIComponent(p.barcode) + '&out_type=scrap"><i class="bi bi-trash"></i> 报废</a>'
+            : '<a class="btn btn-sm btn-primary" href="/stock-out/add?barcode=' +
+              encodeURIComponent(p.barcode) + '"><i class="bi bi-box-arrow-up"></i> 出库</a>';
+        html += '<tr' + (isCur ? ' class="table-warning"' : '') + '>' +
+            '<td><code>' + esc(p.barcode) + '</code>' +
+            (isCur ? ' <span class="badge badge-soft-primary">当前批号</span>' : '') + '</td>' +
+            '<td>' + esc(p.batch_no) + '</td>' +
+            '<td>' + esc(p.expire_date) + ' ' + tag + '</td>' +
+            '<td class="' + dayCls + '">' +
+            (p.expired ? '已过期 ' + Math.abs(p.days_left) + ' 天' : '剩 ' + p.days_left + ' 天') + '</td>' +
+            '<td class="cell-sub">' + (esc(p.storage_location) || '—') + '</td>' +
+            '<td>' + action + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+}
+</script>
+{% endblock %}

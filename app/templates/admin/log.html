@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
+{% block title %}操作日志{% endblock %}
+{% block page_title %}操作日志{% endblock %}
+
+{% block content %}
+<form class="search-bar row g-2" method="get">
+    <div class="col-md-4"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="操作账号 / 内容关键字"></div>
+    <div class="col-md-3">
+        <select class="form-select" name="module">
+            <option value="">全部模块</option>
+            {% for m in modules %}<option value="{{ m }}" {{ 'selected' if module==m }}>{{ m }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+        <a class="btn btn-light" href="{{ url_for('admin.log_list') }}">重置</a>
+    </div>
+    <div class="col-md-2 d-flex">
+        <a class="btn btn-light ms-auto" href="{{ url_for('admin.log_export') }}"><i class="bi bi-file-earmark-excel"></i> 导出</a>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header"><h5><i class="bi bi-clock-history me-2"></i>系统操作日志（最多导出 5000 条）</h5></div>
+    <div class="card-body p-0">
+        {% if pagination.items %}
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th>操作账号</th><th>模块</th><th>操作内容</th><th>IP 地址</th><th>操作时间</th></tr></thead>
+            <tbody>
+            {% for l in pagination.items %}
+            <tr>
+                <td class="cell-main">{{ l.username }}</td>
+                <td><span class="badge badge-soft-primary">{{ l.module }}</span></td>
+                <td>{{ l.content }}</td>
+                <td class="cell-sub">{{ l.ip }}</td>
+                <td class="cell-sub">{{ l.create_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty"><i class="bi bi-clock-history"></i>暂无操作日志</div>
+        {% endif %}
+    </div>
+</div>
+{{ render_pagination(pagination, 'admin.log_list') }}
+{% endblock %}

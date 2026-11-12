@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}试剂分类{% endblock %}
+{% block page_title %}试剂分类{% endblock %}
+
+{% block content %}
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:280px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索分类名称">
+    </div>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('basic.category_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增分类</button>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-hover">
+            <thead><tr><th style="width:80px;">序号</th><th>分类名称</th><th>排序</th><th>试剂数量</th><th style="width:160px;">操作</th></tr></thead>
+            <tbody>
+            {% for c in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td class="cell-main"><i class="bi bi-tag text-primary me-1"></i>{{ c.name }}</td>
+                <td>{{ c.sort }}</td>
+                <td><span class="badge badge-soft-primary">{{ c.reagent_count }}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-light" onclick="editItem({{ c.id }},'{{ c.name }}',{{ c.sort }})"><i class="bi bi-pencil"></i> 编辑</button>
+                    <button class="btn btn-sm btn-light text-danger" onclick="confirmAction('{{ url_for('basic.category_delete') }}',{{ c.id }},'确定删除分类「{{ c.name }}」吗？')"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-tags"></i>暂无分类数据，点击右上角“新增分类”开始</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 新增/编辑模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('basic.category_save') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增试剂分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="f_id">
+                    <div class="mb-3">
+                        <label class="form-label required">分类名称</label>
+                        <input class="form-control" name="name" id="f_name" required placeholder="如：生化试剂">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序（数字越小越靠前）</label>
+                        <input type="number" class="form-control" name="sort" id="f_sort" value="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modalEl = document.getElementById('editModal');
+    function openModal() {
+        document.getElementById('f_id').value = '';
+        document.getElementById('f_name').value = '';
+        document.getElementById('f_sort').value = '0';
+        document.getElementById('modalTitle').textContent = '新增试剂分类';
+        new bootstrap.Modal(modalEl).show();
+    }
+    function editItem(id, name, sort) {
+        document.getElementById('f_id').value = id;
+        document.getElementById('f_name').value = name;
+        document.getElementById('f_sort').value = sort;
+        document.getElementById('modalTitle').textContent = '编辑试剂分类';
+        new bootstrap.Modal(modalEl).show();
+    }
+</script>
+{% endblock %}

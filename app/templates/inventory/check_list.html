@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}库存盘点{% endblock %}
+{% block page_title %}库存盘点{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-clipboard-check me-2"></i>盘点单列表</h5>
+        {% if current_user.is_manager %}
+        <a class="btn btn-success btn-sm ms-auto" href="{{ url_for('inventory.check_add') }}"><i class="bi bi-plus-lg"></i> 新建盘点</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-hover align-middle">
+            <thead><tr><th>盘点单号</th><th>标题</th><th>创建日期</th><th>盘点人</th><th>明细批次</th><th>差异项</th><th>状态</th><th>完成时间</th><th style="width:100px;">操作</th></tr></thead>
+            <tbody>
+            {% for c in items %}
+            <tr>
+                <td class="cell-sub">{{ c.check_no }}</td>
+                <td class="cell-main">{{ c.title }}</td>
+                <td>{{ c.create_time.strftime('%Y-%m-%d') }}</td>
+                <td>{{ c.operator.real_name if c.operator else '-' }}</td>
+                <td>{{ c.items | length }}</td>
+                <td>{% if c.difference_count %}<span class="badge badge-soft-danger">{{ c.difference_count }}</span>
+                    {% else %}<span class="badge badge-soft-success">0</span>{% endif %}</td>
+                <td>
+                    {% if c.status==0 %}<span class="badge badge-soft-warning">盘点中</span>
+                    {% else %}<span class="badge badge-soft-success">已完成</span>{% endif %}
+                </td>
+                <td>{{ c.finish_time.strftime('%Y-%m-%d %H:%M') if c.finish_time else '-' }}</td>
+                <td><a class="btn btn-sm btn-light" href="{{ url_for('inventory.check_detail', cid=c.id) }}"><i class="bi bi-eye"></i> 查看</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-clipboard-check"></i>暂无盘点单，点击右上角“新建盘点”</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

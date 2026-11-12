@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}统计报表{% endblock %}
+{% block page_title %}统计报表{% endblock %}
+
+{% block content %}
+<!-- 时间范围 -->
+<div class="search-bar d-flex flex-wrap align-items-center gap-2">
+    <span class="text-muted-2"><i class="bi bi-calendar3"></i> 统计范围：</span>
+    {% for d in [7,30,90,180,365] %}
+    <a class="btn btn-sm {{ 'btn-primary' if days==d else 'btn-light' }}"
+       href="{{ url_for('report.report_index', days=d) }}">近 {{ d }} 天</a>
+    {% endfor %}
+    <a class="btn btn-success btn-sm ms-auto" href="{{ url_for('report.export_consume', days=days) }}">
+        <i class="bi bi-file-earmark-excel"></i> 导出出库汇总</a>
+</div>
+
+<!-- 汇总卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl">
+        <div class="stat-card"><div class="stat-icon ic-warning"><i class="bi bi-currency-yen"></i></div>
+            <div><div class="stat-value">¥{{ totals.in_amount }}</div><div class="stat-label">采购入库金额</div></div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="stat-card"><div class="stat-icon ic-success"><i class="bi bi-box-arrow-in-down"></i></div>
+            <div><div class="stat-value">{{ totals.in_qty }}</div><div class="stat-label">入库</div></div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="stat-card"><div class="stat-icon ic-primary"><i class="bi bi-box-arrow-up"></i></div>
+            <div><div class="stat-value">{{ totals.out_qty }}</div><div class="stat-label">出库</div></div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="stat-card"><div class="stat-icon ic-danger"><i class="bi bi-trash"></i></div>
+            <div><div class="stat-value">{{ totals.scrap_qty }}</div><div class="stat-label">报废</div></div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="stat-card"><div class="stat-icon ic-info"><i class="bi bi-droplet-half"></i></div>
+            <div><div class="stat-value">{{ totals.used_units }}</div><div class="stat-label">实际使用(最小单位)</div></div></div>
+    </div>
+</div>
+
+<!-- 图表 -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-8">
+        <div class="card h-100"><div class="card-header"><h5>出入库趋势</h5></div>
+            <div class="card-body"><div id="trendChart" class="chart-box"></div></div></div>
+    </div>
+    <div class="col-xl-4">
+        <div class="card h-100"><div class="card-header"><h5>出库类型占比</h5></div>
+            <div class="card-body"><div id="typeChart" class="chart-box"></div></div></div>
+    </div>
+</div>
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card h-100"><div class="card-header"><h5>各分类试剂消耗</h5></div>
+            <div class="card-body"><div id="catChart" class="chart-box-sm"></div></div></div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100"><div class="card-header"><h5>供应商采购金额 TOP10</h5></div>
+            <div class="card-body"><div id="supChart" class="chart-box-sm"></div></div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/js/echarts.min.js') }}?v={{ STATIC_VERSION }}"></script>
+<script>
+    const trend = {{ trend | tojson }};
+    const trendChart = echarts.init(document.getElementById('trendChart'));
+    trendChart.setOption({
+        tooltip: { trigger: 'axis' }, legend: { data: ['入库','出库'], right: 10, top: 0 },
+        grid: { left: 40, right: 20, top: 40, bottom: 30 },
+        xAxis: { type: 'category', boundaryGap: false, data: trend.labels },
+        yAxis: { type: 'value' },
+        series: [
+            { name: '入库', type: 'line', smooth: true, showSymbol: false, data: trend.in,
+              lineStyle: { width: 3, color: '#00B42A' } },
+            { name: '出库', type: 'line', smooth: true, showSymbol: false, data: trend.out,
+              lineStyle: { width: 3, color: '#165DFF' } }
+        ]
+    });
+
+    const typeChart = echarts.init(document.getElementById('typeChart'));
+    typeChart.setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        legend: { bottom: 0 }, color: ['#165DFF','#0FC6C2','#F53F3F'],
+        series: [{ type: 'pie', radius: ['40%','66%'], center: ['50%','45%'],
+            itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 6 },
+            label: { show: false }, labelLine: { show: false },
+            data: {{ type_data | tojson }} }]
+    });
+
+    const cat = {{ cat_data | tojson }};
+    const catChart = echarts.init(document.getElementById('catChart'));
+    catChart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 50, right: 20, top: 20, bottom: 30 },
+        xAxis: { type: 'category', data: cat.map(c => c.name), axisLabel: { interval: 0 } },
+        yAxis: { type: 'value' },
+        series: [{ type: 'bar', data: cat.map(c => c.value), barWidth: '45%',
+            itemStyle: { borderRadius: [6,6,0,0],
+                color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                    {offset:0,color:'#3E8BFF'},{offset:1,color:'#165DFF'}]) } }]
+    });
+
+    const sup = {{ sup_data | tojson }};
+    const supChart = echarts.init(document.getElementById('supChart'));
+    supChart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: p => p[0].name + '：¥' + p[0].value },
+        grid: { left: 120, right: 30, top: 10, bottom: 20 },
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: sup.names.slice().reverse(), axisLabel: { width: 110, overflow: 'truncate' } },
+        series: [{ type: 'bar', data: sup.values.slice().reverse(), barWidth: '50%',
+            itemStyle: { borderRadius: [0,6,6,0],
+                color: new echarts.graphic.LinearGradient(0,0,1,0,[
+                    {offset:0,color:'#00B42A'},{offset:1,color:'#4ADE80'}]) } }]
+    });
+
+    window.addEventListener('resize', () =>
+        [trendChart,typeChart,catChart,supChart].forEach(c => c.resize()));
+</script>
+{% endblock %}

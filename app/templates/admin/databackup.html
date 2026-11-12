@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}数据导入导出{% endblock %}
+{% block page_title %}数据导入导出{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-download"></i> 导出基础数据</h5>
+        <p class="text-muted small">一键导出分类、供应商、存放位置、试剂档案、用户到一个 Excel 文件（多工作表）。</p>
+        <a class="btn btn-primary" href="{{ url_for('databackup.export_all') }}">
+          <i class="bi bi-file-earmark-excel"></i> 导出全部数据
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="bi bi-upload"></i> 导入基础数据</h5>
+        <p class="text-muted small">上传之前导出的 xlsx 文件，按名称匹配更新/新增。新用户默认密码 123456。</p>
+        <form method="post" action="{{ url_for('databackup.import_all') }}" enctype="multipart/form-data">
+          <div class="input-group">
+            <input type="file" class="form-control" name="file" accept=".xlsx" required>
+            <button class="btn btn-success" type="submit"><i class="bi bi-upload"></i> 开始导入</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body">
+    <h6>使用说明</h6>
+    <ol class="small text-muted mb-0">
+      <li>建议先点"导出全部数据"得到标准模板，在 Excel 里编辑后再导入。</li>
+      <li>导入时按<strong>名称</strong>匹配：已存在的记录会更新，不存在的会新增。</li>
+      <li>用户表：已存在的账号只更新姓名/电话/状态，<strong>不会改密码</strong>；新账号初始密码 123456。</li>
+      <li>导入前系统会先自动备份数据库（若已配置每日备份）。建议重要数据先手动备份。</li>
+      <li>存储条件只能填：常温 / 冷藏 / 冷冻；状态列填：启用/停用。</li>
+    </ol>
+  </div>
+</div>
+{% endblock %}

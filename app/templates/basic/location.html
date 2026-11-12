@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}存放位置{% endblock %}
+{% block page_title %}存放位置{% endblock %}
+
+{% block content %}
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:280px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索位置名称">
+    </div>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('basic.location_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增位置</button>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-hover">
+            <thead><tr><th style="width:80px;">序号</th><th>位置名称</th><th>排序</th><th>状态</th><th>备注</th><th style="width:160px;">操作</th></tr></thead>
+            <tbody>
+            {% for l in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td class="cell-main"><i class="bi bi-geo-alt text-primary me-1"></i>{{ l.name }}</td>
+                <td>{{ l.sort }}</td>
+                <td>
+                    {% if l.status == 1 %}<span class="badge badge-soft-success">启用</span>
+                    {% else %}<span class="badge badge-soft-secondary">停用</span>{% endif %}
+                </td>
+                <td>{{ l.remark or '-' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-light" onclick="editItem({{ l.id }},'{{ l.name }}',{{ l.sort }},{{ l.status }},'{{ l.remark or '' }}')"><i class="bi bi-pencil"></i> 编辑</button>
+                    <button class="btn btn-sm btn-light text-danger" onclick="confirmAction('{{ url_for('basic.location_delete') }}',{{ l.id }},'确定删除位置「{{ l.name }}」吗？')"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-geo-alt"></i>暂无存放位置，点击右上角“新增位置”添加常用存储位置（如 2-8℃冰箱、-20℃冰柜）</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 新增/编辑模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('basic.location_save') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增存放位置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="f_id">
+                    <div class="mb-3">
+                        <label class="form-label required">位置名称</label>
+                        <input class="form-control" name="name" id="f_name" required placeholder="如：2-8℃冰箱A架">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序（数字越小越靠前）</label>
+                        <input type="number" class="form-control" name="sort" id="f_sort" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" name="status" id="f_status">
+                            <option value="1">启用</option>
+                            <option value="0">停用</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <input class="form-control" name="remark" id="f_remark" placeholder="选填">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modalEl = document.getElementById('editModal');
+    function openModal() {
+        document.getElementById('f_id').value = '';
+        document.getElementById('f_name').value = '';
+        document.getElementById('f_sort').value = '0';
+        document.getElementById('f_status').value = '1';
+        document.getElementById('f_remark').value = '';
+        document.getElementById('modalTitle').textContent = '新增存放位置';
+        new bootstrap.Modal(modalEl).show();
+    }
+    function editItem(id, name, sort, status, remark) {
+        document.getElementById('f_id').value = id;
+        document.getElementById('f_name').value = name;
+        document.getElementById('f_sort').value = sort;
+        document.getElementById('f_status').value = status;
+        document.getElementById('f_remark').value = remark;
+        document.getElementById('modalTitle').textContent = '编辑存放位置';
+        new bootstrap.Modal(modalEl).show();
+    }
+</script>
+{% endblock %}

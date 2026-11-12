@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}新建盘点{% endblock %}
+{% block page_title %}新建盘点单{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-xl-7">
+<div class="card">
+    <div class="card-header"><h5><i class="bi bi-clipboard-plus me-2"></i>盘点范围确认</h5></div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle-fill"></i>
+            点击"生成盘点单"后，系统将对当前<b>所有中心在库批次（按包装）</b>自动生成盘点明细，
+            随后可逐批录入实际盘点数量，系统自动计算差异并调整库存（盘亏报废，盘盈补建）。
+        </div>
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">盘点标题</label>
+                <input class="form-control" name="title"
+                       placeholder="如：2026年10月例行盘点（留空则按日期自动生成）">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">盘点备注</label>
+                <input class="form-control" name="remark">
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> 生成盘点单</button>
+                <a href="{{ url_for('inventory.check_list') }}" class="btn btn-light">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}

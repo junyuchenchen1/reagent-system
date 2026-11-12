@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block title %}供应商管理{% endblock %}
+{% block page_title %}供应商管理{% endblock %}
+
+{% block content %}
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:280px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索供应商名称">
+    </div>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('basic.supplier_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增供应商</button>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if items %}
+        <table class="table table-hover">
+            <thead><tr><th>供应商名称</th><th>类型</th><th>联系人</th><th>经营许可证号</th><th>许可证有效期</th><th>状态</th><th style="width:160px;">操作</th></tr></thead>
+            <tbody>
+            {% for s in items %}
+            <tr>
+                <td class="cell-main"><i class="bi bi-building text-primary me-1"></i>{{ s.name }}</td>
+                <td><span class="badge badge-soft-info">{{ s.supplier_type or '经销商' }}</span></td>
+                <td>{{ s.contact or '-' }}</td>
+                <td class="cell-sub">{{ s.license_no or '-' }}</td>
+                <td>
+                    {% if s.license_expire_date %}
+                        {{ s.license_expire_date.strftime('%Y-%m-%d') }}
+                        {% if s.license_expire_date < NOW.date() %}<span class="badge badge-soft-danger ms-1">已过期</span>{% endif %}
+                    else -{% endif %}
+                </td>
+                <td>
+                    {% if s.status == 1 %}<span class="badge badge-soft-success">合格</span>
+                    {% else %}<span class="badge badge-soft-secondary">停用</span>{% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-light"
+                        data-id="{{ s.id }}" data-name="{{ s.name }}" data-contact="{{ s.contact }}"
+                        data-phone="{{ s.phone }}" data-address="{{ s.address }}"
+                        data-license="{{ s.license_no }}" data-type="{{ s.supplier_type or '经销商' }}"
+                        data-licexp="{{ s.license_expire_date.strftime('%Y-%m-%d') if s.license_expire_date else '' }}"
+                        data-cert="{{ s.cert_image or '' }}"
+                        data-status="{{ s.status }}"
+                        data-remark="{{ s.remark }}" onclick="editItem(this)"><i class="bi bi-pencil"></i> 编辑</button>
+                    <button class="btn btn-sm btn-light text-danger" onclick="confirmAction('{{ url_for('basic.supplier_delete') }}',{{ s.id }},'确定删除供应商「{{ s.name }}」吗？')"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><i class="bi bi-building"></i>暂无供应商数据</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('basic.supplier_save') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增供应商</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="f_id">
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label class="form-label required">供应商名称</label>
+                            <input class="form-control" name="name" id="f_name" required></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">类型</label>
+                            <select class="form-select" name="supplier_type" id="f_type">
+                                <option value="生产厂家">生产厂家</option>
+                                <option value="一级代理">一级代理</option>
+                                <option value="经销商" selected>经销商</option>
+                            </select></div>
+                        <div class="col-md-3 mb-3"><label class="form-label">状态</label>
+                            <select class="form-select" name="status" id="f_status">
+                                <option value="1">合格</option><option value="0">停用</option>
+                            </select></div>
+                        <div class="col-md-4 mb-3"><label class="form-label">联系人</label>
+                            <input class="form-control" name="contact" id="f_contact"></div>
+                        <div class="col-md-4 mb-3"><label class="form-label">联系电话</label>
+                            <input class="form-control" name="phone" id="f_phone"></div>
+                        <div class="col-md-4 mb-3"><label class="form-label">经营许可证号</label>
+                            <input class="form-control" name="license_no" id="f_license"></div>
+                        <div class="col-md-4 mb-3"><label class="form-label">许可证有效期</label>
+                            <input type="date" class="form-control" name="license_expire_date" id="f_licexp"></div>
+                        <div class="col-md-8 mb-3"><label class="form-label">经营许可证图片（PNG/JPG）</label>
+                            <input type="file" class="form-control" name="cert_image" accept=".png,.jpg,.jpeg,.bmp">
+                            <div class="form-text" id="certHint"></div></div>
+                        <div class="col-12 mb-3"><label class="form-label">地址</label>
+                            <input class="form-control" name="address" id="f_address"></div>
+                        <div class="col-12 mb-3"><label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" id="f_remark" rows="2"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modalEl = document.getElementById('editModal');
+    function openModal() {
+        document.getElementById('f_id').value = '';
+        ['name','contact','phone','address','license','remark'].forEach(k =>
+            document.getElementById('f_' + k).value = '');
+        document.getElementById('f_type').value = '经销商';
+        document.getElementById('f_licexp').value = '';
+        document.getElementById('certHint').innerHTML = '';
+        document.getElementById('f_status').value = '1';
+        document.getElementById('modalTitle').textContent = '新增供应商';
+        new bootstrap.Modal(modalEl).show();
+    }
+    function editItem(btn) {
+        const d = btn.dataset;
+        document.getElementById('f_id').value = d.id;
+        document.getElementById('f_name').value = d.name || '';
+        document.getElementById('f_contact').value = d.contact || '';
+        document.getElementById('f_phone').value = d.phone || '';
+        document.getElementById('f_address').value = d.address || '';
+        document.getElementById('f_license').value = d.license || '';
+        document.getElementById('f_type').value = d.type || '经销商';
+        document.getElementById('f_licexp').value = d.licexp || '';
+        document.getElementById('certHint').innerHTML = d.cert
+            ? '<a href="/basic/cert/' + d.cert + '" target="_blank"><i class="bi bi-image"></i> 查看已上传的许可证图片</a>（重新上传将覆盖）'
+            : '';
+        document.getElementById('f_remark').value = d.remark || '';
+        document.getElementById('f_status').value = d.status || '1';
+        document.getElementById('modalTitle').textContent = '编辑供应商';
+        new bootstrap.Modal(modalEl).show();
+    }
+</script>
+{% endblock %}

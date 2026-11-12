@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block title %}用户管理{% endblock %}
+{% block page_title %}用户管理{% endblock %}
+
+{% block content %}
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <div class="input-group" style="max-width:280px;">
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索账号 / 姓名">
+    </div>
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('admin.user_list') }}">重置</a>
+    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-person-plus"></i> 新增用户</button>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead><tr><th style="width:64px;">序号</th><th>账号</th><th>姓名</th><th>科室</th><th>电话</th><th>角色</th><th>签名</th><th>状态</th><th>创建时间</th><th style="width:150px;">操作</th></tr></thead>
+            <tbody>
+            {% for u in items %}
+            <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td class="cell-main"><i class="bi bi-person-badge text-primary me-1"></i>{{ u.username }}</td>
+                <td>{{ u.real_name }}</td>
+                <td>{{ u.department }}</td>
+                <td>{{ u.phone or '-' }}</td>
+                <td><span class="badge badge-soft-primary">{{ u.role_name }}</span></td>
+                <td>
+                    {% if u.signature_image %}
+                    <a href="{{ url_for('admin.view_sig', fname=u.signature_image) }}" target="_blank">
+                        <img src="{{ url_for('admin.view_sig', fname=u.signature_image) }}" style="height:30px;">
+                    </a>{% else %}<span class="text-muted small">未上传</span>{% endif %}
+                </td>
+                <td>
+                    {% if u.status==1 %}<span class="badge badge-soft-success">正常</span>
+                    {% else %}<span class="badge badge-soft-secondary">禁用</span>{% endif %}
+                </td>
+                <td class="cell-sub">{{ u.create_time.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <button class="btn btn-sm btn-light"
+                        data-id="{{ u.id }}" data-username="{{ u.username }}"
+                        data-realname="{{ u.real_name }}" data-department="{{ u.department }}"
+                        data-phone="{{ u.phone }}" data-role="{{ u.role }}"
+                        data-status="{{ u.status }}" data-sig="{{ u.signature_image or '' }}"
+                        onclick="editItem(this)"><i class="bi bi-pencil"></i> 编辑</button>
+                    <button class="btn btn-sm btn-light text-danger"
+                        onclick="confirmAction('{{ url_for('admin.user_delete') }}',{{ u.id }},'确定删除用户「{{ u.real_name }}」吗？')"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('admin.user_save') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="f_id">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label required">登录账号</label>
+                            <input class="form-control" name="username" id="f_username" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label required">真实姓名</label>
+                            <input class="form-control" name="real_name" id="f_realname" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">所属科室</label>
+                            <input class="form-control" name="department" id="f_department" value="检验科">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">联系电话</label>
+                            <input class="form-control" name="phone" id="f_phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label required">角色</label>
+                            <select class="form-select" name="role" id="f_role">
+                                {% for code, name in role_map.items() %}
+                                <option value="{{ code }}">{{ name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">状态</label>
+                            <select class="form-select" name="status" id="f_status">
+                                <option value="1">正常</option><option value="0">禁用</option>
+                            </select>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label" id="pwdLabel">登录密码</label>
+                            <input type="password" class="form-control" name="password" id="f_password" minlength="6">
+                            <div class="form-text" id="pwdHint">新建用户密码不少于 6 位</div>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">手写签名图片（PNG，建议透明背景）</label>
+                            <input type="file" class="form-control" name="signature_image" accept=".png,.jpg,.jpeg,.bmp">
+                            <div class="form-text" id="sigHint"></div>
+                            <div class="form-check mt-1" id="sigRemoveWrap" style="display:none;">
+                                <input class="form-check-input" type="checkbox" name="remove_signature" id="f_remove_sig" value="1">
+                                <label class="form-check-label text-danger" for="f_remove_sig">移除当前签名（保存后生效）</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const modalEl = document.getElementById('editModal');
+    function openModal() {
+        document.getElementById('f_id').value = '';
+        document.getElementById('f_username').value = '';
+        document.getElementById('f_username').readOnly = false;
+        document.getElementById('f_realname').value = '';
+        document.getElementById('f_department').value = '检验科';
+        document.getElementById('f_phone').value = '';
+        document.getElementById('f_role').value = 'staff';
+        document.getElementById('f_status').value = '1';
+        document.getElementById('f_password').value = '';
+        document.getElementById('f_password').required = true;
+        document.getElementById('sigHint').innerHTML = '';
+        document.getElementById('sigRemoveWrap').style.display = 'none';
+        document.getElementById('f_remove_sig').checked = false;
+        document.getElementById('modalTitle').textContent = '新增用户';
+        document.getElementById('pwdLabel').textContent = '登录密码';
+        document.getElementById('pwdHint').textContent = '新建用户密码不少于 6 位';
+        new bootstrap.Modal(modalEl).show();
+    }
+    function editItem(btn) {
+        const d = btn.dataset;
+        document.getElementById('f_id').value = d.id;
+        document.getElementById('f_username').value = d.username;
+        document.getElementById('f_username').readOnly = true;
+        document.getElementById('f_realname').value = d.realname || '';
+        document.getElementById('f_department').value = d.department || '';
+        document.getElementById('f_phone').value = d.phone || '';
+        document.getElementById('f_role').value = d.role || 'staff';
+        document.getElementById('f_status').value = d.status || '1';
+        document.getElementById('f_password').value = '';
+        document.getElementById('f_password').required = false;
+        document.getElementById('sigHint').innerHTML = d.sig
+            ? '<a href="/admin/sig/' + d.sig + '" target="_blank"><img src="/admin/sig/' + d.sig + '" style="height:30px;"></a> 重新上传将覆盖'
+            : '';
+        document.getElementById('sigRemoveWrap').style.display = d.sig ? '' : 'none';
+        document.getElementById('f_remove_sig').checked = false;
+        document.getElementById('modalTitle').textContent = '编辑用户';
+        document.getElementById('pwdLabel').textContent = '重置密码（可留空）';
+        document.getElementById('pwdHint').textContent = '留空则保持原密码不变';
+        new bootstrap.Modal(modalEl).show();
+    }
+</script>
+{% endblock %}

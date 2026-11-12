@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}出库单详情{% endblock %}
+{% block page_title %}出库单详情{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-xl-10">
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-file-earmark-text me-2"></i>出库单 {{ out.order_no }}</h5>
+        <span class="ms-auto">
+            {% if out.status==0 %}<span class="badge badge-soft-warning">待确认</span>
+            {% elif out.status==1 %}<span class="badge badge-soft-success">已出库</span>
+            {% else %}<span class="badge badge-soft-danger">已取消</span>{% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered">
+            <tr><th style="width:150px;background:#F7F8FA;">试剂名称</th><td>{{ out.reagent.name }}</td>
+                <th style="width:150px;background:#F7F8FA;">出库类型</th><td><span class="badge badge-soft-primary">{{ out.type_text }}</span></td></tr>
+            <tr><th style="background:#F7F8FA;">出库数量</th><td class="fw-bold">{{ out.quantity }} {{ out.reagent.unit }}（每{{ out.reagent.unit }} {{ out.reagent.pack_size or 1 }} {{ out.reagent.small_unit }}）</td>
+                <th style="background:#F7F8FA;">接收科室/人</th><td>{{ out.receiver or '-' }}</td></tr>
+            <tr><th style="background:#F7F8FA;">申请人</th><td>{{ out.applicant.real_name if out.applicant else '-' }}</td>
+                <th style="background:#F7F8FA;">申请时间</th><td>{{ out.create_time.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+            <tr><th style="background:#F7F8FA;">确认人</th><td>{{ out.confirmer.real_name if out.confirmer else '-' }}</td>
+                <th style="background:#F7F8FA;">确认时间</th><td>{{ out.confirm_time.strftime('%Y-%m-%d %H:%M') if out.confirm_time else '-' }}</td></tr>
+            <tr><th style="background:#F7F8FA;">事由 / 原因</th><td colspan="3">{{ out.reason or '-' }}</td></tr>
+        </table>
+
+        {% if packs %}
+        <h6 class="mt-4 mb-2"><i class="bi bi-upc-scan"></i> 出库明细（{{ packs|length }} 条）</h6>
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+            <thead><tr><th>序号</th><th>条码号</th><th>批号</th><th>效期</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for p in packs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><span class="font-monospace fw-bold">{{ p.barcode }}</span></td>
+                <td>{{ p.batch_no }}</td>
+                <td>{{ p.expire_date.strftime('%Y-%m-%d') }}（{{ p.expire_text }}）</td>
+                <td><span class="badge badge-soft-{{ 'success' if p.status in ['issued','using'] else 'secondary' }}">{{ p.status_text }}</span></td>
+                <td>
+                    {% if p.status in ['issued','using'] %}
+                    <a class="btn btn-sm btn-success" href="{{ url_for('usage.add') }}?barcode={{ p.barcode }}">登记使用</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <a href="{{ url_for('stock_out.out_list') }}" class="btn btn-light"><i class="bi bi-arrow-left"></i> 返回</a>
+        {% if out.status==1 and out.out_type != 'scrap' %}
+        <a class="btn btn-success ms-auto" href="{{ url_for('usage.add') }}"><i class="bi bi-upc-scan"></i> 去使用登记</a>
+        {% endif %}
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}

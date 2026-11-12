@@ -1,0 +1,293 @@
+{% extends 'base.html' %}
+{% block title %}使用登记{% endblock %}
+{% block page_title %}试剂使用登记{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 扫码 -->
+    <div class="col-lg-4 mb-3">
+        <div class="card h-100" style="border:2px solid var(--success);">
+            <div class="card-body">
+                <h5 class="mb-3"><i class="bi bi-upc-scan text-success"></i> 扫码定位试剂包装</h5>
+                <p class="text-muted small">扫描已出库试剂包装上的条码（或手动输入 10 位后回车），自动定位到该包装。</p>
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                    <input type="text" class="form-control" id="scanInput"
+                           placeholder="扫描 / 输入条码" autocomplete="off" autofocus>
+                </div>
+                <div id="scanResult" class="mt-3"></div>
+                <div class="alert alert-light border small mt-3 mb-0">
+                    <i class="bi bi-lightbulb text-warning"></i>
+                    系统优先消耗<b>已开封（使用中）</b>的包装，避免重复开封；用完后再开启新包装。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登记表单 -->
+    <div class="col-lg-8 mb-3">
+        <div class="card">
+            <div class="card-header"><h5><i class="bi bi-droplet-half"></i> 登记本次使用</h5>
+                <a class="btn btn-light btn-sm" href="{{ url_for('usage.index') }}">在用试剂</a>
+            </div>
+            <div class="card-body">
+                <form method="post" id="useForm">
+                    <input type="hidden" name="barcode" id="barcode">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">试剂分类（筛选）</label>
+                            <select class="form-select" id="categoryFilter">
+                                <option value="">全部分类</option>
+                                {% for c in categories %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">生产企业（筛选）</label>
+                            <select class="form-select" id="mfrFilter">
+                                <option value="">全部厂家</option>
+                                {% for m in manufacturers %}
+                                <option value="{{ m }}">{{ m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">选择试剂</label>
+                            <select class="form-select" id="reagent">
+                                <option value="">请选择试剂</option>
+                                {% for r in reagents %}
+                                <option value="{{ r.id }}" data-category="{{ r.category_id or '' }}"
+                                    data-mfr="{{ r.registrant or '' }}">
+                                    {{ r.name }}{% if r.registrant %}（{{ r.registrant }}）{% endif %}（{{ r.spec or '无规格' }}）
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label required">选择已出库的包装</label>
+                            <select class="form-select" id="packSel" disabled>
+                                <option value="">请先扫码或选择试剂</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="packInfo" class="alert alert-light border" style="display:none;"></div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label required">本次使用数量</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="units_used"
+                                       id="unitsUsed" min="1" value="1" disabled>
+                                <span class="input-group-text" id="unitText">瓶</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">使用类型</label>
+                            <select class="form-select" name="use_type">
+                                <option value="use">日常检验</option>
+                                <option value="qc">质控消耗</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">备注</label>
+                            <input class="form-control" name="remark" placeholder="如项目 / 仪器">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success" type="submit" id="submitBtn" disabled>
+                        <i class="bi bi-check-lg"></i> 提交使用登记
+                    </button>
+                    <a class="btn btn-light" href="{{ url_for('usage.index') }}">取消</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const reagentSel = document.getElementById('reagent');
+    const categorySel = document.getElementById('categoryFilter');
+    const mfrSel = document.getElementById('mfrFilter');
+    const packSel = document.getElementById('packSel');
+    const scanInput = document.getElementById('scanInput');
+    const scanResult = document.getElementById('scanResult');
+    const barcode = document.getElementById('barcode');
+    const unitsUsed = document.getElementById('unitsUsed');
+    const packInfo = document.getElementById('packInfo');
+    const submitBtn = document.getElementById('submitBtn');
+    const unitText = document.getElementById('unitText');
+    let packMap = {};
+
+    function setFormEnabled(on) {
+        packSel.disabled = !on;
+        unitsUsed.disabled = !on;
+        submitBtn.disabled = !on;
+    }
+
+    function renderPack(pack, smallUnit) {
+        if (!pack) {
+            packInfo.style.display = 'none';
+            barcode.value = '';
+            setFormEnabled(false);
+            return;
+        }
+        barcode.value = pack.barcode;
+        unitText.textContent = smallUnit || '瓶';
+        unitsUsed.max = pack.remaining_units;
+        unitsUsed.value = 1;
+        const warn = pack.days_left < 0
+            ? '<span class="text-danger">该包装已过期，请谨慎使用</span>'
+            : '效期 ' + pack.expire_date + '（剩 ' + pack.days_left + ' 天）';
+        packInfo.className = 'alert alert-success border';
+        packInfo.innerHTML =
+            '<div><b>' + pack.reagent_name + '</b> ｜ 条码 ' + pack.barcode +
+            ' ｜ 批号 ' + pack.batch_no + '</div>' +
+            '<div class="mt-1">每包装 ' + pack.total_units + ' ' + (smallUnit || '瓶') +
+            '，已用 ' + pack.used_units + '，<b>剩余 ' + pack.remaining_units +
+            ' ' + (smallUnit || '瓶') + '</b> ｜ 状态：' + pack.status_text +
+            ' ｜ ' + warn + '</div>';
+        packInfo.style.display = 'block';
+        setFormEnabled(true);
+    }
+
+    // 选择某包装后刷新信息
+    function onPackChange() {
+        const p = packMap[packSel.value];
+        if (p) renderPack(p, unitText.dataset.unit || '瓶');
+    }
+    packSel.addEventListener('change', onPackChange);
+
+    // 按试剂加载已出库包装
+    function loadPacks(selectBarcode) {
+        const rid = reagentSel.value;
+        if (!rid) { packSel.innerHTML = '<option value="">请先选择试剂</option>'; setFormEnabled(false); return; }
+        fetch('/usage/packs?reagent_id=' + rid)
+            .then(r => r.json())
+            .then(d => {
+                packMap = {};
+                if (!d.found || d.packs.length === 0) {
+                    packSel.innerHTML = '<option value="">该试剂暂无已出库可用包装</option>';
+                    setFormEnabled(false);
+                    packInfo.style.display = 'none';
+                    return;
+                }
+                unitText.dataset.unit = d.small_unit;
+                packSel.innerHTML = d.packs.map((p, i) => {
+                    packMap[p.barcode] = Object.assign({
+                        reagent_name: reagentSel.options[reagentSel.selectedIndex].text
+                    }, p);
+                    const flag = p.status_text === '使用中' ? '【已开封优先】' : '';
+                    return '<option value="' + p.barcode + '"' +
+                        (i === 0 || p.barcode === selectBarcode ? ' selected' : '') +
+                        '>' + flag + p.barcode + ' ｜ 批号' + p.batch_no +
+                        ' ｜ 剩' + p.remaining_units + d.small_unit + '</option>';
+                }).join('');
+                const chosen = packMap[selectBarcode] || d.packs[0];
+                renderPack(Object.assign({
+                    reagent_name: reagentSel.options[reagentSel.selectedIndex].text
+                }, chosen), d.small_unit);
+            });
+    }
+
+    function applyFilter() {
+        const cat = categorySel.value;
+        const mfr = mfrSel.value;
+        // 选了厂家才过滤分类
+        if (mfr) {
+            var validCats = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.mfr === mfr && opt.dataset.category) validCats.add(opt.dataset.category);
+            });
+            Array.from(categorySel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validCats.has(opt.value);
+            });
+            if (categorySel.value && !validCats.has(categorySel.value)) categorySel.value = '';
+        } else {
+            Array.from(categorySel.options).forEach(opt => { opt.hidden = false; });
+        }
+        // 选了分类才过滤厂家
+        if (cat) {
+            var validMfrs = new Set();
+            Array.from(reagentSel.options).forEach(opt => {
+                if (!opt.value) return;
+                if (opt.dataset.category === cat && opt.dataset.mfr) validMfrs.add(opt.dataset.mfr);
+            });
+            Array.from(mfrSel.options).forEach(opt => {
+                if (!opt.value) return;
+                opt.hidden = !validMfrs.has(opt.value);
+            });
+            if (mfrSel.value && !validMfrs.has(mfrSel.value)) mfrSel.value = '';
+        } else {
+            Array.from(mfrSel.options).forEach(opt => { opt.hidden = false; });
+        }
+
+        var fCat = categorySel.value;
+        var fMfr = mfrSel.value;
+        Array.from(reagentSel.options).forEach(opt => {
+            if (!opt.value) return;
+            const catOk = !fCat || opt.dataset.category === fCat;
+            const mfrOk = !fMfr || opt.dataset.mfr === fMfr;
+            opt.hidden = !(catOk && mfrOk);
+        });
+        reagentSel.value = '';
+    }
+    categorySel.addEventListener('change', applyFilter);
+    mfrSel.addEventListener('change', applyFilter);
+    reagentSel.addEventListener('change', () => loadPacks(null));
+
+    // 扫码定位
+    function doScan(code) {
+        if (!code || code.length < 8) return;
+        fetch('/usage/scan?barcode=' + encodeURIComponent(code))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.found) {
+                    scanResult.innerHTML = '<div class="alert alert-danger py-2 small mb-0">' +
+                        '<i class="bi bi-x-circle"></i> ' + d.message + '</div>';
+                    return;
+                }
+                if (!d.can_use) {
+                    scanResult.innerHTML = '<div class="alert alert-warning py-2 small mb-0">' +
+                        '<i class="bi bi-exclamation-triangle"></i> ' + d.message +
+                        '</div>';
+                    return;
+                }
+                categorySel.value = '';
+                Array.from(reagentSel.options).forEach(o => o.hidden = false);
+                reagentSel.value = d.reagent_id;
+                loadPacks(d.barcode);
+                scanResult.innerHTML = '<div class="alert alert-success py-2 small mb-0">' +
+                    '<i class="bi bi-check-circle"></i> 已定位：' + d.reagent_name +
+                    '（剩 ' + d.remaining_units + ' ' + d.small_unit + '）</div>';
+                scanInput.value = '';
+                scanInput.focus();
+            });
+    }
+    scanInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doScan(this.value.trim());
+        }
+    });
+    // 从在用列表携带条码进入
+    const presetBarcode = new URLSearchParams(location.search).get('barcode');
+    if (presetBarcode) doScan(presetBarcode.trim());
+
+    // 提交前校验瓶数
+    document.getElementById('useForm').addEventListener('submit', function (e) {
+        const p = packMap[packSel.value];
+        const n = parseInt(unitsUsed.value) || 0;
+        if (!p) { e.preventDefault(); alert('请先扫码或选择要使用的包装'); return; }
+        if (n <= 0 || n > p.remaining_units) {
+            e.preventDefault();
+            alert('使用瓶数需在 1 ~ ' + p.remaining_units + ' 之间');
+        }
+    });
+</script>
+{% endblock %}
