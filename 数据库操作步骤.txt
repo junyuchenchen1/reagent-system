@@ -1,22 +1,31 @@
-
-inventory	库存表
-pack_use	包装使用记录
+inventory	库存汇总表（按“试剂+批号”统计在库盒数）
+pack_use	开盒使用记录（按瓶登记的实际消耗）
 reagent_category	试剂分类表
-reagent_info	试剂信息表
-reagent_pack	所有试剂包装明细表（包括已经出库使用、报废，必须先删这个）
+reagent_info	试剂档案表（名称/规格/每盒瓶数等）
+reagent_pack	所有试剂盒明细（含已出库、已用完、已报废；清库存必须先删这个）
+barcode_sequence	每日条码发号表（清库后还想重排条码才需要删）
 stock_check	盘点主表
 stock_check_item	盘点明细
 stock_in	入库单主表
 stock_out	出库单主表
-storage_location	存放位置表
+storage_location	存放位置字典（入库时可选的位置）
 supplier	供应商表
-sys_oper_log	系统操作日志
-sys_user	系统用户表
-temp_location	临时存放位置
-temp_record	临时记录
+sys_oper_log	操作日志表
+sys_user	用户表
+temp_location	温湿度记录位置字典（冰箱/室温）
+temp_record	温湿度记录（上午/下午温度、湿度、记录人）
 
 
-pack_use --> reagent_pack --> stock_in
-有使用记录就先删除使用记录，没有就直接删除试剂明细表（相当于清空库存） 再删除入库表
+外键依赖与删除顺序（先删被引用方，再删主表）：
 
-reagent_pack删不掉是因为有使用了pack_use
+pack_use → reagent_pack → stock_out
+pack_use → reagent_pack → stock_in
+没有使用记录时可直接删 reagent_pack
+stock_check_item → stock_check
+temp_record → temp_location
+
+补充说明：
+1. reagent_pack 删不掉，基本都是还有 pack_use（使用记录）或 stock_out（出库单）在引用它，先删被引用方即可。
+2. 只想清空库存、保留试剂档案：删 pack_use、reagent_pack、inventory 三张即可，不要动 reagent_info。
+3. inventory 是汇总表，不被其它表引用，最后清即可（服务启动时也会按实际在库盒自动校准）。
+4. 操作正式库前先执行 python backup.py 备份，或直接用 python init_db.py --force 重建。

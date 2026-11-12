@@ -118,6 +118,16 @@ def _init_empty():
 # 演示模式（默认）：建表 + 演示账号 + 演示数据
 # ============================================================
 def _init_demo():
+    # 演示模式把 admin 口令固定为 admin123，首启生成的随机密码凭据随即失效，
+    # 删除该文件，避免用户照着文件里的旧密码登录失败。
+    cred = os.path.join(Config.BASE_DIR, "instance", "initial_admin_password.txt")
+    if os.path.exists(cred):
+        try:
+            os.remove(cred)
+            print("已删除首启生成的 initial_admin_password.txt（演示模式口令固定为 admin123）。")
+        except OSError:
+            pass
+
     # ---------------- 用户（admin 若已存在则重置为演示口令） ----------------
     admin = User.query.filter_by(username="admin").first()
     if admin is None:

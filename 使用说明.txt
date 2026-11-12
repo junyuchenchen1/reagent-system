@@ -1,2 +1,9 @@
-第一步：**如果 PowerShell 提示禁止运行脚本**：用管理员开 PowerShell 执行 `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`，然后再右键运行
-第二步：运行install.ps1
+前提：服务器系统为 Windows 10 / 11，已安装 Python 3.10 或更高版本（安装时勾选 Add to PATH）。脚本会先校验 Python 版本，低于 3.10 会直接退出。
+
+第一步：如果 PowerShell 提示"禁止运行脚本"：用管理员开 PowerShell 执行 `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`（只需一次）。
+第二步：右键 install.ps1 → 使用 PowerShell 运行；或执行 `powershell -ExecutionPolicy Bypass -File install.ps1`。
+
+部署完成后：
+1. 服务已在 5000 端口启动：本机 http://127.0.0.1:5000，局域网 http://本机IP:5000。
+2. 首次启动已自动建表、创建 admin，初始密码见 instance\initial_admin_password.txt（admin 首次登录成功后该文件自动删除）。
+3. 想要演示数据（15 种试剂、3 个演示账号）再运行 python init_db.py；注意它会把 admin 密码重置为 admin123，仅适合体验环境。

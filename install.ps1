@@ -32,10 +32,26 @@ try {
     $pyVer = python --version 2>&1
     Write-Host "  已安装: $pyVer" -ForegroundColor Green
 } catch {
-    Write-Host "  [错误] 未检测到 Python，请先安装 Python 3.8+ 并勾选 Add to PATH" -ForegroundColor Red
+    Write-Host "  [错误] 未检测到 Python，请先安装 Python 3.10+ 并勾选 Add to PATH" -ForegroundColor Red
     Read-Host "按回车退出"
     exit 1
 }
+# 版本校验：项目依赖 Flask 3 / SQLAlchemy 2，要求 Python 3.10 及以上
+$pyNum = (python -c "import sys; print(sys.version_info[0], sys.version_info[1])" 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $pyNum) {
+    Write-Host "  [错误] 无法获取 Python 版本，请确认 python 命令可用" -ForegroundColor Red
+    Read-Host "按回车退出"
+    exit 1
+}
+$pyParts = $pyNum.Trim() -split "\s+"
+$pyMajor = [int]$pyParts[0]
+$pyMinor = [int]$pyParts[1]
+if ($pyMajor -lt 3 -or ($pyMajor -eq 3 -and $pyMinor -lt 10)) {
+    Write-Host "  [错误] 当前 Python 为 $pyMajor.$pyMinor，低于 3.10，请升级后重试（https://www.python.org/downloads/）" -ForegroundColor Red
+    Read-Host "按回车退出"
+    exit 1
+}
+Write-Host "  版本检查通过：Python $pyMajor.$pyMinor（要求 3.10 及以上）" -ForegroundColor Green
 
 # ---------- 2. 安装依赖 ----------
 Write-Host "`n[2/8] 安装 Python 依赖 ..." -ForegroundColor Yellow

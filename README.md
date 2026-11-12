@@ -2,14 +2,16 @@
 
 基于 **Python 3.10+（实测 3.13）+ Flask + SQLite/MySQL** 的检验科试剂全生命周期管理系统。采用「**盒（采购/出库单位）→ 瓶（最小使用单位）**」两级库存模型，支持每盒唯一条码、扫码枪出入库、按瓶登记实际消耗、50×30 标签打印，覆盖试剂入库、出库、科室使用、库存、效期预警、盘点、统计报表等完整业务。前端基于 Bootstrap 5，专业、美观、响应式，静态资源全部内置、**断网可用**。
 
-Windows 上推荐使用 `install.ps1` **一键部署**（自动装依赖、注册看门狗与每日备份计划任务、建快捷方式、开机自启、启动服务），详见[一、Windows 一键部署](#一windows-一键部署推荐)。
+Windows 上推荐使用 `install.ps1` **一键部署**（自动装依赖、注册看门狗与每日备份计划任务、建快捷方式、登录自启、启动服务），详见[一、Windows 一键部署](#一windows-一键部署推荐)。
 
 ---
 
 ## 一、Windows 一键部署（推荐）
 
 ### 1. 前置要求
-- Windows 7+，已安装 **Python 3.10 或更高版本**，并勾选 *Add to PATH*。
+- 服务器端：**Windows 10 / 11**（Python 3.9 起官方已不再支持 Windows 7，3.10+ 在 Win7 上装不上）。
+- 已安装 **Python 3.10 或更高版本**，并勾选 *Add to PATH*（脚本会校验版本，低于 3.10 直接退出）。
+- 客户端：科室其他电脑只要能开浏览器即可，Windows 7 老电脑也能正常访问（仅作浏览器客户端，不装 Python）。
 
 ### 2. 运行一键部署脚本
 
@@ -23,10 +25,11 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 | 步骤 | 内容 |
 |------|------|
-| 1 | 检查 Python 版本 |
-| 2 | `pip install -r requirements.txt` 安装全部依赖 |
-| 3 | 创建 `instance / logs / backups / exports` 等目录 |
-| 4 | 生成启动 / 停止 / 看门狗 VBS 脚本（`start_server.vbs`、`stop_server.vbs`、`watchdog.vbs`） |
+| 1 | 检查 Python 是否存在且版本 ≥ 3.10（不满足直接报错退出，不会继续装依赖） |
+| 2 | `pip install -r requirements.txt` 安装全部依赖（失败只警告，不中断部署） |
+| 3 | 创建 `instance / logs / backups / exports / instance\signatures / instance\certs` 目录 |
+| 3.5 | 递归清理项目内所有 `__pycache__`（避免旧的 .pyc 让新代码不生效） |
+| 4 | 生成启动 / 停止 / 看门狗 VBS 脚本（`start_server.vbs`、`stop_server.vbs`、`watchdog.vbs`，GBK 编码） |
 | 5 | 注册计划任务：**`ReagentServer_Watchdog`**（每 5 分钟检测崩溃自动拉起服务）、**`ReagentServer_Backup`**（每天 23:00 自动备份数据库） |
 | 6 | 创建桌面快捷方式「试剂管理系统 / 停止试剂管理系统」，并把「登录自启」放入启动文件夹 |
 | 7 | 立即启动服务并提示本机 / 局域网访问地址 |
@@ -35,7 +38,9 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 ### 3. 初始化数据库（两种模式）
 
-部署完成后数据库是空的，按用途二选一：
+**先说明一件容易误解的事**：`install.ps1` 第 7 步会立即启动服务，而服务首次启动时 `app/__init__.py` 就已经自动建好全部数据表、创建 `admin` 账号（随机一次性密码写入 `instance/initial_admin_password.txt`）、写入 4 个默认存放位置。所以"部署完成"时库里**不是空的**，已有表、管理员和存放位置，只是没有试剂、供应商等业务数据。
+
+`init_db.py` 是在此基础上决定"要不要演示数据"，按用途二选一：
 
 ```powershell
 # 演示模式（默认）：建表 + 三个演示账号 + 全套演示数据（15 种试剂、条码盒、出入库、使用记录）
@@ -45,8 +50,10 @@ python init_db.py
 python init_db.py --empty
 ```
 
-- `--empty` 模式的管理员密码写入 `instance/initial_admin_password.txt`，**首次登录成功后该文件自动删除**，请登录后立即改密。
-- 库中已有业务数据时再次运行会**跳过初始化**，不会覆盖；确需清空重建加 `--force`（可组合：`python init_db.py --force --empty`）。
+- **演示模式会把已有 `admin` 的密码重置为 `admin123`**，并删除首启生成的 `initial_admin_password.txt`（因为文件里的随机密码已失效）；演示口令仅用于体验。
+- `--empty` 模式下，若 `admin` 已存在（服务启动过一次），**保持原密码、不重新生成**，凭据文件也不会被覆盖；若该文件已被首次登录自动删除，请先确认之前是否跑过演示模式（那就是 `admin123`），否则用 `reset_admin_password.py` 重置。
+- 库中已有业务数据（分类 / 试剂 / 入库单 / 条码盒任一存在）时再次运行会**跳过初始化**，不会覆盖；确需清空重建加 `--force`（可组合：`python init_db.py --force --empty`）。
+- 凭据文件 `instance/initial_admin_password.txt` 在 **admin 首次登录成功后自动删除**，请登录后立即改密。
 
 ### 4. 登录与访问
 
@@ -94,18 +101,23 @@ python run.py
 ### 看门狗与自动备份（install.ps1 已注册）
 
 - **`ReagentServer_Watchdog`**：每 5 分钟检查 5000 端口，服务崩溃自动拉起；
-- **`ReagentServer_Backup`**：每天 23:00 调用 `backup.py`，备份到 `backups/`，**保留 30 天**；
-- 手动备份：`python backup.py`；
-- 手动恢复：`python restore.py` 一键回滚（按需选择备份文件）。
+- **`ReagentServer_Backup`**：每天 23:00 调用 `backup.py`，一次做完四件事——
+  1. 用 SQLite 在线备份接口备份到 `backups/reagent_YYYYMMDD_HHMMSS.db`，**保留 30 天**；
+  2. 清理 `exports/` 里 **7 天前**的 xlsx（所以导出目录的自动清理依赖这个任务）；
+  3. 删除 `sys_oper_log` 中 **365 天前**的操作日志；
+  4. 以上结果写入 `logs/backup.log`。
+- **重要限定**：`backup.py` 里的 `DB_PATH` 硬编码为 `instance/reagent.db`，**只对 SQLite 有效**。切到 MySQL 后这个 23:00 任务不会备份任何数据（也不会清理日志/导出），须自行加 `mysqldump` 任务，或在库里手工清理。
+- 手动备份：`python backup.py`；手动恢复：`python restore.py` 一键回滚（按需选择备份文件）。
 
 ### 日志
-- 服务运行日志：`logs/server.log`
+- 服务运行日志：`logs/server.log`（VBS/Waitress 启动时的标准输出）
+- 错误堆栈：`logs/error.log`（500 错误的完整 traceback，RotatingFileHandler，单文件 2MB 轮转、保留 3 份；静默启动时查错主要看这里）
 - 备份日志：`logs/backup.log`
-- 操作审计：系统内「系统管理 → 操作日志」（存数据库，可导出 Excel）
+- 操作审计：系统内「系统管理 → 操作日志」（存数据库，可导出 Excel，导出取最近 5000 条）
 
 ### 升级 / 重装
 - 代码更新后重跑 `install.ps1` 即可（幂等：重复注册任务与快捷方式会被覆盖，不会重复报错）；
-- 数据库结构新增字段会自动迁移（见[四、数据库](#四数据库)）。
+- SQLite 会自动补列，MySQL 需手工加列（见[四、数据库](#四数据库)）。
 
 ---
 
@@ -134,8 +146,20 @@ SQLite 已开启 WAL、外键约束与 15 秒写锁等待，减少 "database is 
 
 > `DB_TYPE`：`auto`（默认）/ `mysql`（强制）/ `sqlite`（强制）。`SQLITE_PATH` 环境变量可覆盖 SQLite 库路径（自动化测试、临时实例用）。
 
-### 结构迁移
-首次启动自动建表，并对旧库自动补列（`app/__init__.py`）。手动变更结构用 `migrate.py`。
+### 结构迁移与启动自检
+
+`create_app()` 每次启动都会做以下几件事（无需手工操作）：
+
+| 启动动作 | 说明 | MySQL 是否生效 |
+|------|------|------|
+| `db.create_all()` | 建缺失的表，已有表与数据不动 | 是 |
+| 自动补列 | 按 `PRAGMA table_info` 检查并 `ALTER TABLE ADD COLUMN`（`sys_user.signature_image`、`reagent_info` 证照 5 列、`supplier` 证照 3 列） | **否，仅 SQLite** |
+| 空日期修复 | 把 DATE/DATETIME 列里的 `''`、`0000-00-00%` 置为 NULL（恢复旧备份后常见 500） | **否，仅 SQLite** |
+| 库存汇总自校准 | `reconcile_inventory()` 按实际在库盒重算 `inventory.quantity`，并补/删多余汇总行 | 两库都执行 |
+| 默认数据 | 存放位置为空时写入 4 个默认位置；用户表为空时创建 admin（随机密码 + 凭据文件） | 两库都执行 |
+
+- `migrate.py` **只补齐两个查询索引**（`ix_pack_stock_fifo`、`ix_inventory_reagent_expire`），不增删任何列、不改业务数据；升级到条码序列版本后执行一次即可。
+- MySQL 下没有自动补列，升级时需手工执行对应 `ALTER TABLE`，或重建库后用「数据导入导出」把基础数据导回。
 
 ---
 
@@ -195,14 +219,19 @@ waitress-serve --host=0.0.0.0 --port=8000 run:app
 | 证照管理 | 试剂医疗器械注册证（编号/有效期/注册人/代理人）与供应商经营许可证及图片归档 |
 | 基础数据 | 试剂分类、供应商、存放位置字典、试剂档案（含采购单位 / 每盒瓶数 / 最小单位） |
 | 数据导入导出 | 基础数据一键导出多工作表 Excel，改完按名称匹配重新导入 |
-| 备份恢复 | 每天 23:00 自动备份（保留 30 天），`restore.py` 一键回滚 |
+| 备份恢复 | 每天 23:00 自动备份（保留 30 天，**仅 SQLite**），`restore.py` 一键回滚 |
 | 统计报表 | 出入库趋势、出库类型占比、分类消耗、供应商采购金额、实际使用瓶数，Excel 导出 |
 | 系统管理 | 用户管理（三类角色 RBAC）、操作日志审计与导出 |
 
-三类角色（RBAC）：
-- **系统管理员 admin**：用户管理、日志、全部业务
-- **试剂管理员 manager**：入库/出库审核确认、库存、盘点、基础数据、报表
-- **检验人员 staff**：领用申请、出库/使用扫码、库存查询、个人记录
+> Excel 导出上限：单次最多 **5 万行**（`app/utils/common.py` 的 `MAX_ROWS`），超出部分会被截断并在控制台打印警告，请缩小时间范围或分次导出。导出文件含手写签名图片（签名存于 `instance/signatures/`）。
+
+三类角色（RBAC，`app/utils/permission.py`）：
+
+- **系统管理员 admin**：用户管理与签名、操作日志、数据导入导出（仅 admin 可用），以及全部业务功能；入库单可直接修改/删除（限待审核）。
+- **试剂管理员 manager**：入库审核（通过/驳回）、出库确认（含以"组低耗员"身份确认）、盘点的创建与完成、基础数据维护（分类/供应商/存放位置/试剂档案增删改）、温湿度记录更正、批号性能验证标记、各类 Excel 导出、统计报表。
+- **检验人员 staff**：入库/出库/使用申请与扫码登记、库存与预警查询、温湿度录入、报表与各业务记录查看（只读）；可导出自己的「使用记录」与「试剂出库汇总」。不可审核单据、不可改基础数据、不可做盘点和温湿度更正；入库/出库/库存/温湿度导出、操作日志、数据导入导出均需更高权限。
+
+> 未通过权限校验的请求返回 403 页面；未登录一律跳登录页。
 
 ---
 
@@ -240,7 +269,27 @@ waitress-serve --host=0.0.0.0 --port=8000 run:app
 python -m pytest -q
 ```
 
-当前覆盖（12 个用例）：条码位数/唯一性、入库生成盒与库存、FIFO 出库、接收人记录、过期盒只能报废、瓶级使用与超量保护、盘点差异调整、温湿度按月筛选、主要页面可访问、有历史记录的试剂/用户禁止删除。
+当前 **17 个用例**（`tests/test_business.py`，Python 3.13 实测全部通过），逐项覆盖：
+
+1. 条码 10 位且不重复；
+2. 入库按盒生成条码盒（盒数 = 条码数）；
+3. 出库按最早效期优先（FIFO）；
+4. 出库记录的是"接收人"而不是"确认人"；
+5. 过期盒不能领用/质控，只能报废；
+6. 过期在库盒可通过扫码走报废出库；
+7. 出库批次接口区分可用盒与过期盒；
+8. 扫码接口提示"同试剂有更早效期的在库盒"；
+9. 实时库存明细按条码列出每一盒；
+10. 库存汇总与实物不符时自动校准（`reconcile_inventory`）；
+11. 在库盒不能直接用，必须先出库；使用量不得超剩余瓶数；
+12. 盘点差异按实际数量对账（盘亏报废、盘盈补盒）；
+13. 主要页面（21 个 URL：首页、入库 2 页、出库 2 页、使用 3 页、库存 4 页、基础数据 4 页、报表、用户、日志、数据导入导出）全部返回 200；
+14. 温湿度记录按月份区间过滤（不依赖 SQLite 的 strftime）；
+15. 性能验证标记覆盖同批号的多张入库单；
+16. 有历史业务记录的试剂禁止删除；
+17. 有历史业务记录的用户禁止删除。
+
+> 测试夹具（`tests/conftest.py`）在导入 app 之前就把 `SQLITE_PATH` 指向系统临时目录，因此**任何一次 pytest 都不会碰 `instance/reagent.db`**。
 
 ---
 
@@ -259,14 +308,14 @@ python -m pytest -q
 │   ├── static/              # 样式与脚本（vendor 内置，断网可用）
 │   └── templates/           # 页面模板（含 stock/labels.html 50×30 标签打印页）
 ├── instance/                # SQLite 数据库、secret_key、管理员凭据、证件/签名图片
-├── exports/                 # Excel 导出目录（自动清理 7 天前文件）
-├── backups/                 # 数据库备份（每天 23:00，保留 30 天）
-├── logs/                    # 服务运行日志（server.log / backup.log）
+├── exports/                 # Excel 导出目录（由 23:00 备份任务清理 7 天前文件）
+├── backups/                 # 数据库备份（每天 23:00，保留 30 天；仅 SQLite）
+├── logs/                    # 日志：server.log / error.log / backup.log
 ├── tests/                   # pytest 回归测试（临时库，不碰真实数据）
 ├── init_db.py               # 数据库初始化（双模式：演示数据 / 正式空库）
 ├── backup.py                # 数据库备份（SQLite 在线备份接口）
 ├── restore.py               # 备份回滚
-├── migrate.py               # 手动结构迁移
+├── migrate.py               # 补齐查询索引（不改结构、不动数据）
 ├── install.ps1              # Windows 一键部署
 ├── uninstall.ps1            # 卸载
 ├── start_server.vbs / stop_server.vbs / watchdog.vbs   # 启动/停止/看门狗
@@ -285,8 +334,8 @@ python -m pytest -q
 - **超量保护**：单次使用瓶数不能超过该盒剩余瓶数，否则报错。
 - **盘点**：以中心在库整盒为基准，盘亏盒报废、盘盈补建盒（自动生成新条码）。
 - **效期状态**：剩余天数 `<= 试剂效期预警天数` 为临期；小于 0 为过期。
-- **全程留痕**：所有增删改记录操作人、时间、IP，支持审计。
-- **安全**：密码 PBKDF2 加密、ORM 防 SQL 注入、模板自动转义防 XSS、全站 CSRF 校验、首次部署随机一次性管理员密码。
+- **操作留痕**：关键业务动作（登录/登出、改密、用户新建与修改、入库审核、出库确认、使用登记、盘点、温湿度更正、批号验证、数据导入导出）写入 `sys_oper_log`，含操作人、账号、模块、内容、IP、时间。物理删除会被拒绝或替换为"停用"，以保留追溯链。
+- **安全**：密码用 Werkzeug 默认的 **scrypt** 哈希（不是 PBKDF2）、ORM 参数化防 SQL 注入、Jinja2 自动转义防 XSS、所有 POST 走全站 CSRF 校验、首次部署生成随机一次性管理员密码、连续 10 次密码错误锁定 3 分钟（进程内计数，重启归零）、新密码最短 6 位。
 
 ---
 
@@ -315,3 +364,12 @@ python -m pytest -q
 
 8. **忘了管理员密码？**
    正式模式首次部署的密码在 `instance/initial_admin_password.txt`（首次登录成功后自动删除）；之后忘记，可用 `reset_admin_password.py` 重置。
+
+9. **运行 `init_db.py` 提示"数据库已存在业务数据，跳过初始化"？**
+   这不是报错。说明库里已有分类/试剂/入库单/条码盒，程序按设计保护现有数据、不再灌演示数据；确实要演示数据请加 `--force`（会清空全部业务数据，正式库慎用）。
+
+10. **切到 MySQL 后备份目录不再新增文件？**
+   正常现象。`backup.py` 只备份 `instance/reagent.db`，MySQL 模式需自行安排 `mysqldump` 任务；每日 23:00 任务此时连日志/导出清理也不会执行。
+
+11. **页面更新后样式没变化？**
+   静态资源带 7 天浏览器缓存（`Cache-Control: max-age=604800`）。开发改样式可把 `STATIC_VERSION`（`app/__init__.py`）加 1 或按 Ctrl+F5 强刷。
