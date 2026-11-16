@@ -80,13 +80,15 @@ def export_all():
     regs = Reagent.query.order_by(Reagent.id).all()
     add_sheet("试剂档案",
               ["试剂名称", "分类", "规格", "大包装单位", "每包数量", "最小单位",
-               "最低库存", "效期预警天数", "存储条件", "是否危险品",
+               "最低库存", "最低库存单位", "效期预警天数", "存储条件", "是否危险品",
                "注册证号", "注册证有效期", "注册人/生产企业", "代理人",
                "状态", "备注"],
               [[r.name,
                 r.category.name if r.category else "",
                 r.spec or "", r.unit or "盒", r.pack_size or 1, r.small_unit or "瓶",
-                r.min_stock or 0, r.expire_warning_days or 90,
+                r.min_stock or 0,
+                "最小单位" if r.min_stock_unit == Reagent.MIN_UNIT_UNIT else "大包装",
+                r.expire_warning_days or 90,
                 r.storage_condition or "冷藏",
                 "是" if r.is_hazard == 1 else "否",
                 r.reg_no or "",
@@ -234,6 +236,10 @@ def import_all():
                 obj.min_stock = int(d.get("最低库存") or 0)
             except Exception:
                 obj.min_stock = 0
+            # 旧导出文件没有"最低库存单位"列：缺省按大包装，与历史口径一致
+            obj.min_stock_unit = (Reagent.MIN_UNIT_UNIT
+                                  if (d.get("最低库存单位") or "").strip() == "最小单位"
+                                  else Reagent.MIN_UNIT_PACK)
             try:
                 obj.expire_warning_days = int(d.get("效期预警天数") or 90)
             except Exception:

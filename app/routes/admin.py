@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.log import OperLog
 from app.models.stock import StockIn, StockOut, ReagentPack, PackUse
 from app.utils.permission import admin_required
+from app.utils.paging import page_arg
 from app.utils.common import log_operation, export_excel, send_excel
 
 admin_bp = Blueprint("admin", __name__)
@@ -185,7 +186,7 @@ def user_delete():
 @login_required
 @admin_required
 def log_list():
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     keyword = request.args.get("keyword", "").strip()
     module = request.args.get("module", "").strip()
     query = OperLog.query

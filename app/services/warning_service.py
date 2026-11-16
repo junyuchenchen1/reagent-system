@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """预警与统计服务：效期预警、低库存、首页统计、趋势数据"""
 from datetime import datetime, timedelta, date, time as dtime
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.extensions import db
 from app.models.reagent import Reagent
@@ -81,19 +81,38 @@ def get_expire_warnings(limit: int = 20):
 
 
 def get_low_stock_warnings(limit: int = 10):
-    """在库盒数低于预警值"""
-    counts = db.session.query(
-        Reagent.id, db.func.count(ReagentPack.id).label("boxes")
-    ).outerjoin(ReagentPack, db.and_(
-        ReagentPack.reagent_id == Reagent.id,
-        ReagentPack.status == ReagentPack.STATUS_IN_STOCK,
-    )).filter(Reagent.status == 1).group_by(Reagent.id).subquery()
-    rows = db.session.query(Reagent, counts.c.boxes).join(
-        counts, counts.c.id == Reagent.id).filter(counts.c.boxes < Reagent.min_stock).all()
-    low = [{
-        "reagent": r, "current": int(boxes), "min": r.min_stock,
-        "suggestion": f"建议采购 {r.min_stock - int(boxes)} {r.unit}以上",
-    } for r, boxes in rows]
+    """库存不足预警（口径由试剂档案的 min_stock_unit 决定）：
+    - pack（默认）：比较中心在库盒数，与历史行为一致；
+    - unit：比较全科可用瓶数 = 中心在库未开封 + 科室已出库未用完。
+    min_stock 为 0 表示该试剂不参与预警。
+    """
+    low = []
+    for r in Reagent.query.options(selectinload(Reagent.packs)).filter(
+            Reagent.status == 1).all():
+        minv = r.min_stock or 0
+        if minv <= 0:
+            continue
+        current = r.current_stock_for_min
+        if current >= minv:
+            continue
+        gap = minv - current
+        unit_text = r.min_stock_unit_text
+        if r.min_stock_unit == Reagent.MIN_UNIT_UNIT and (r.pack_size or 1) > 1:
+            boxes = -(-gap // (r.pack_size or 1))   # 向上取整，折算需补的盒数
+            suggestion = f"建议补货 {gap} {unit_text}（约 {boxes} {r.unit or '盒'}）"
+        else:
+            suggestion = f"建议补货 {gap} {unit_text}以上"
+        low.append({
+            "reagent": r,
+            "current": current,
+            "min": minv,
+            "gap": gap,
+            "unit_text": unit_text,
+            "by_unit": r.min_stock_unit == Reagent.MIN_UNIT_UNIT,
+            "center_qty": r.in_stock_units if r.min_stock_unit == Reagent.MIN_UNIT_UNIT else r.in_stock_boxes,
+            "issued_qty": r.in_use_units if r.min_stock_unit == Reagent.MIN_UNIT_UNIT else 0,
+            "suggestion": suggestion,
+        })
     low.sort(key=lambda x: x["current"] - x["min"])
     return low[:limit]
 

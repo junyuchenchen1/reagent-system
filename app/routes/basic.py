@@ -279,6 +279,9 @@ def reagent_save():
         "pack_size": int(request.form.get("pack_size", 1) or 1),
         "small_unit": request.form.get("small_unit", "瓶").strip() or "瓶",
         "min_stock": int(request.form.get("min_stock", 10) or 0),
+        "min_stock_unit": Reagent.MIN_UNIT_UNIT
+        if request.form.get("min_stock_unit") == Reagent.MIN_UNIT_UNIT
+        else Reagent.MIN_UNIT_PACK,
         "expire_warning_days": int(request.form.get("expire_warning_days", 90) or 0),
         "storage_condition": request.form.get("storage_condition", Reagent.STORAGE_COOL),
         "is_hazard": 1 if request.form.get("is_hazard") else 0,

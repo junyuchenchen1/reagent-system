@@ -11,6 +11,7 @@ from app.models.stock import StockIn, ReagentPack
 from app.services import stock_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
+from app.utils.paging import page_arg
 
 stock_in_bp = Blueprint("stock_in", __name__)
 
@@ -25,7 +26,7 @@ def _parse_date(s):
 @stock_in_bp.route("/")
 @login_required
 def in_list():
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     keyword = request.args.get("keyword", "").strip()
     status = request.args.get("status", "")
     start = _parse_date(request.args.get("start", ""))

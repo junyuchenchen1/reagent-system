@@ -30,7 +30,7 @@
     <div class="card-body p-0">
         {% if items %}
         <table class="table table-hover">
-            <thead><tr><th>试剂名称</th><th>生产企业</th><th>规格</th><th>包装规格</th><th>存储条件</th><th>在库 / 在用</th><th>最低预警</th><th>状态</th><th style="width:160px;">操作</th></tr></thead>
+            <thead><tr><th>试剂名称</th><th>生产企业</th><th>规格</th><th>包装规格</th><th>存储条件</th><th>在库 / 在用</th><th>最低库存预警</th><th>状态</th><th style="width:160px;">操作</th></tr></thead>
             <tbody>
             {% for r in items %}
             <tr>
@@ -45,12 +45,13 @@
                 <td><span class="fw-bold">1 {{ r.unit }} = {{ r.pack_size or 1 }} {{ r.small_unit }}</span></td>
                 <td><span class="badge badge-soft-primary">{{ r.storage_condition }}</span></td>
                 <td>
-                    <div class="cell-main {% if r.in_stock_boxes <= r.min_stock %}text-danger{% endif %}">
+                    <div class="cell-main {% if r.is_low_stock %}text-danger{% endif %}">
                         {{ r.in_stock_boxes }} {{ r.unit }}
+                        <span class="small text-muted">/ 共 {{ r.in_stock_units }} {{ r.small_unit }}</span>
                     </div>
                     <div class="cell-sub text-info">已出库未用 {{ r.in_use_units }} {{ r.small_unit }}</div>
                 </td>
-                <td>{{ r.min_stock }} {{ r.unit }}</td>
+                <td class="{{ 'text-danger fw-bold' if r.is_low_stock }}">{{ r.min_stock }} {{ r.min_stock_unit_text }}</td>
                 <td>
                     {% if r.status == 1 %}<span class="badge badge-soft-success">启用</span>
                     {% else %}<span class="badge badge-soft-secondary">停用</span>{% endif %}
@@ -62,7 +63,7 @@
                         data-category="{{ r.category_id or '' }}" data-spec="{{ r.spec }}"
                         data-unit="{{ r.unit }}"
                         data-packsize="{{ r.pack_size or 1 }}" data-smallunit="{{ r.small_unit or '瓶' }}"
-                        data-min="{{ r.min_stock }}"
+                        data-min="{{ r.min_stock }}" data-minunit="{{ r.min_stock_unit or 'pack' }}"
                         data-warning="{{ r.expire_warning_days }}"
                         data-storage="{{ r.storage_condition }}"
                         data-hazard="{{ r.is_hazard }}" data-status="{{ r.status }}"
@@ -111,10 +112,16 @@
                             <input type="number" min="1" class="form-control" name="pack_size" id="f_packsize" value="1" required></div>
                         <div class="col-md-2 mb-3"><label class="form-label">最小单位</label>
                             <input class="form-control" name="small_unit" id="f_smallunit" value="瓶" placeholder="瓶/支/个/ml"></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">最低库存(大包装)</label>
-                            <input type="number" class="form-control" name="min_stock" id="f_min" value="10"></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">效期预警(天)</label>
+                        <div class="col-md-2 mb-3"><label class="form-label">最低库存</label>
+                            <input type="number" min="0" class="form-control" name="min_stock" id="f_min" value="10"></div>
+                        <div class="col-md-2 mb-3"><label class="form-label">预警按哪种单位</label>
+                            <select class="form-select" name="min_stock_unit" id="f_minunit" onchange="updateMinHint()">
+                                <option value="pack">按大包装</option>
+                                <option value="unit">按最小单位</option>
+                            </select></div>
+                        <div class="col-md-2 mb-3"><label class="form-label">效期预警(天)</label>
                             <input type="number" class="form-control" name="expire_warning_days" id="f_warning" value="90"></div>
+                        <div class="col-12 mb-2"><div class="form-text" id="minHint"></div></div>
                         <div class="col-md-3 mb-3"><label class="form-label">存储条件</label>
                             <select class="form-select" name="storage_condition" id="f_storage">
                                 {% for s in ['常温','冷藏','冷冻'] %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
@@ -166,6 +173,7 @@
         document.getElementById('f_packsize').value = '1';
         document.getElementById('f_smallunit').value = '瓶';
         document.getElementById('f_min').value = '1';
+        document.getElementById('f_minunit').value = 'pack';
         document.getElementById('f_warning').value = '90';
         document.getElementById('f_storage').value = '冷藏';
         document.getElementById('f_hazard').checked = false;
@@ -176,6 +184,7 @@
         document.getElementById('f_agent').value = '';
         document.getElementById('certHint').innerHTML = '';
         document.getElementById('modalTitle').textContent = '新增试剂';
+        updateMinHint();
         new bootstrap.Modal(modalEl).show();
     }
     function editItem(btn) {
@@ -188,6 +197,7 @@
         document.getElementById('f_packsize').value = d.packsize || '1';
         document.getElementById('f_smallunit').value = d.smallunit || '瓶';
         document.getElementById('f_min').value = d.min || '0';
+        document.getElementById('f_minunit').value = d.minunit || 'pack';
         document.getElementById('f_warning').value = d.warning || '90';
         document.getElementById('f_storage').value = d.storage || '常温';
         document.getElementById('f_hazard').checked = d.hazard === '1';
@@ -201,7 +211,29 @@
             : '';
         document.getElementById('f_remark').value = d.remark || '';
         document.getElementById('modalTitle').textContent = '编辑试剂';
+        updateMinHint();
         new bootstrap.Modal(modalEl).show();
     }
+    function updateMinHint() {
+        const u = document.getElementById('f_unit').value || '盒';
+        const su = document.getElementById('f_smallunit').value || '瓶';
+        const isUnit = document.getElementById('f_minunit').value === 'unit';
+        const unit = isUnit ? su : u;
+        const min = parseInt(document.getElementById('f_min').value || '0', 10) || 0;
+        const hint = document.getElementById('minHint');
+        if (!hint) { return; }
+        if (min <= 0) {
+            hint.textContent = '最低库存填 0 表示该试剂不参与库存不足预警。';
+            return;
+        }
+        const boxInfo = isUnit ? '（按每' + u + ' ' + (parseInt(document.getElementById('f_packsize').value || '1', 10) || 1) + ' ' + su + '折算）' : '';
+        hint.textContent = isUnit
+            ? '全科可用' + su + '数（中心在库未开封 + 科室已出库未用完）少于 ' + min + ' ' + su + '时触发预警' + boxInfo + '。'
+            : '中心在库少于 ' + min + ' ' + u + '时触发库存不足预警。';
+    }
+    ['f_min', 'f_unit', 'f_smallunit', 'f_packsize'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) { el.addEventListener('input', updateMinHint); }
+    });
 </script>
 {% endblock %}

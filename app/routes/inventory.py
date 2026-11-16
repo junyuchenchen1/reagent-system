@@ -12,6 +12,7 @@ from app.models.stock import Inventory, StockCheck, StockIn, ReagentPack
 from app.services import stock_service, warning_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel
+from app.utils.paging import page_arg
 
 inventory_bp = Blueprint("inventory", __name__)
 
@@ -48,7 +49,7 @@ class SimplePagination:
 @inventory_bp.route("/")
 @login_required
 def stock_list():
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     keyword = request.args.get("keyword", "").strip()
     category_id = request.args.get("category_id", "")
     storage = request.args.get("storage", "")
@@ -153,6 +154,11 @@ def reagent_packs(rid):
             "small_unit": reagent.small_unit or "瓶",
             "pack_size": reagent.pack_size or 1,
             "min_stock": reagent.min_stock or 0,
+            "min_stock_unit": reagent.min_stock_unit or "pack",
+            "min_stock_unit_text": reagent.min_stock_unit_text,
+            "in_stock_units": reagent.in_stock_units,
+            "in_use_units": reagent.in_use_units,
+            "available_units": reagent.available_units,
             "reg_no": reagent.reg_no or "",
         },
         "in_stock": len(packs),
@@ -319,7 +325,7 @@ def _month_bounds(month: str):
 @inventory_bp.route("/temp")
 @login_required
 def temp_list():
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     loc_filter = request.args.get("location", "").strip()
     # 默认当前月
     month = request.args.get("month", "").strip()

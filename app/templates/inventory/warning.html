@@ -63,14 +63,17 @@
         {% if low_items %}
         <div class="table-responsive">
         <table class="table table-hover align-middle">
-            <thead><tr><th>试剂</th><th>当前在库</th><th>最低预警值</th><th>缺口</th><th>处理建议</th></tr></thead>
+            <thead><tr><th>试剂</th><th>预警口径</th><th>当前可用量</th><th>最低预警值</th><th>缺口</th><th>处理建议</th></tr></thead>
             <tbody>
             {% for r in low_items %}
             <tr>
                 <td class="cell-main">{{ r.reagent.name }}</td>
-                <td>{{ r.current }} {{ r.reagent.unit }}</td>
-                <td>{{ r.min }} {{ r.reagent.unit }}</td>
-                <td class="text-danger fw-bold">{{ r.min - r.current }} {{ r.reagent.unit }}</td>
+                <td><span class="badge badge-soft-{{ 'info' if r.by_unit else 'secondary' }}">按{{ r.unit_text }}</span></td>
+                <td>{{ r.current }} {{ r.unit_text }}
+                    {% if r.by_unit %}<div class="cell-sub">中心在库 {{ r.center_qty }} + 科室在用 {{ r.issued_qty }}</div>{% endif %}
+                </td>
+                <td>{{ r.min }} {{ r.unit_text }}</td>
+                <td class="text-danger fw-bold">{{ r.gap }} {{ r.unit_text }}</td>
                 <td class="small"><a href="{{ url_for('stock_in.in_add') }}">{{ r.suggestion }}</a></td>
             </tr>
             {% endfor %}

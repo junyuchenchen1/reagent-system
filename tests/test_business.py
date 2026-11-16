@@ -345,3 +345,145 @@ def test_user_with_history_cannot_be_deleted(client, db_session, users, reagent)
                        follow_redirects=True)
     assert resp.status_code == 200
     assert db_session.session.get(User, users["mgr"].id) is not None
+
+
+# ------------------------- 最低库存预警口径（按盒 / 按瓶） -------------------------
+def test_low_stock_warning_by_unit_counts_total_units(db_session, users, reagent):
+    """min_stock_unit=unit：按在库最小单位数比较，而不是盒数。"""
+    from app.services import warning_service
+
+    reagent.pack_size = 10
+    reagent.min_stock = 50
+    reagent.min_stock_unit = reagent.MIN_UNIT_UNIT
+    db_session.session.commit()
+
+    _in_stock(reagent, users["mgr"], qty=2)        # 2 盒 = 20 瓶
+
+    rows = warning_service.get_low_stock_warnings(99)
+    row = next(x for x in rows if x["reagent"].id == reagent.id)
+    assert row["current"] == 20
+    assert row["min"] == 50
+    assert row["gap"] == 30
+    assert row["unit_text"] == "瓶"
+    assert row["by_unit"] is True
+    # 缺口 30 瓶按每盒 10 瓶折算 = 3 盒
+    assert "约 3 盒" in row["suggestion"]
+
+
+def test_low_stock_warning_by_pack_ignores_unit_count(db_session, users, reagent):
+    """min_stock_unit=pack：只看在库盒数，瓶数再多也不影响判定。"""
+    from app.services import warning_service
+
+    reagent.pack_size = 12
+    reagent.min_stock = 3
+    reagent.min_stock_unit = reagent.MIN_UNIT_PACK
+    db_session.session.commit()
+
+    _in_stock(reagent, users["mgr"], qty=2)        # 2 盒 = 24 瓶
+
+    rows = warning_service.get_low_stock_warnings(99)
+    row = next(x for x in rows if x["reagent"].id == reagent.id)
+    assert row["current"] == 2
+    assert row["gap"] == 1
+    assert row["unit_text"] == "盒"
+    assert row["by_unit"] is False
+    assert "30 瓶" not in row["suggestion"]
+
+
+def test_low_stock_warning_by_unit_includes_issued_unused(db_session, users, reagent):
+    """按瓶预警：科室已出库未用完的瓶也计入当前可用量。"""
+    from app.models.reagent import Reagent
+    from app.services import stock_service, warning_service
+
+    reagent.pack_size = 10
+    reagent.min_stock = 15
+    reagent.min_stock_unit = reagent.MIN_UNIT_UNIT
+    db_session.session.commit()
+
+    _in_stock(reagent, users["mgr"], qty=2)      # 中心 2 盒 = 20 瓶
+    out = _out(reagent, users["mgr"], qty=1)     # 领出 1 盒到科室
+    stock_service.confirm_stock_out(out, users["mgr"])
+
+    db_session.session.expire_all()
+    r = db_session.session.get(Reagent, reagent.id)
+    assert r.in_stock_units == 10
+    assert r.in_use_units == 10
+    assert r.available_units == 20
+
+    # 若只算中心在库会误判 10 < 15 缺血；实际全科 20 瓶充足 → 不应预警
+    assert all(x["reagent"].id != r.id
+               for x in warning_service.get_low_stock_warnings(99))
+
+
+def test_low_stock_zero_means_no_warning(db_session, users, reagent):
+    """最低库存填 0 表示不参与预警（两种口径都成立）。"""
+    from app.services import warning_service
+
+    reagent.min_stock = 0
+    reagent.min_stock_unit = reagent.MIN_UNIT_UNIT
+    db_session.session.commit()
+    _in_stock(reagent, users["mgr"], qty=1)
+
+    rows = warning_service.get_low_stock_warnings(99)
+    assert all(x["reagent"].id != reagent.id for x in rows)
+
+
+def test_reagent_save_persists_min_stock_unit(client, db_session, users, reagent):
+    """界面保存时按所选口径落库，非法值回落为按大包装。"""
+    from app.models.reagent import Reagent
+
+    base = {
+        "id": reagent.id, "name": reagent.name,
+        "unit": "盒", "small_unit": "瓶", "pack_size": 12,
+        "min_stock": 40, "expire_warning_days": 90,
+        "storage_condition": "冷藏", "status": "1",
+        "csrf_token": "test-token",
+    }
+    client.post("/basic/reagent/save",
+                data=dict(base, min_stock_unit="unit"), follow_redirects=True)
+    saved = db_session.session.get(Reagent, reagent.id)
+    assert saved.min_stock == 40
+    assert saved.min_stock_unit == Reagent.MIN_UNIT_UNIT
+    assert saved.min_stock_unit_text == "瓶"
+
+    client.post("/basic/reagent/save",
+                data=dict(base, min_stock_unit="bogus"), follow_redirects=True)
+    db_session.session.expire_all()
+    assert db_session.session.get(Reagent, reagent.id).min_stock_unit == Reagent.MIN_UNIT_PACK
+
+
+def test_pagination_macro_renders_ellipsis_instead_of_none(app, db_session):
+    """回归：页数较多时 iter_pages() 会返回 None 作省略占位，不能被直接渲染成 None。"""
+    from flask import render_template_string
+
+    class FakePagination:
+        page = 5
+        pages = 12
+        has_prev = True
+        has_next = True
+        prev_num = 4
+        next_num = 6
+
+        def iter_pages(self, **kwargs):
+            return [1, 2, None, 4, 5, 6, None, 11, 12]
+
+    with app.test_request_context("/usage/records?page=5&keyword=abc"):
+        html = render_template_string(
+            "{% from '_macros.html' import pagination %}"
+            "{{ pagination(pg, 'usage.records') }}",
+            pg=FakePagination())
+
+    assert "None" not in html               # 不再出现 None 字样
+    assert "&hellip;" in html               # 省略号占位
+    assert "page=4" in html and "page=6" in html   # 上/下一页仍带页码
+    assert "keyword=abc" in html            # 查询条件被保留
+
+
+def test_pagination_tolerates_bad_page_param(client, db_session, users, reagent):
+    """回归：?page=None / 非数字 / 负数 不应 500，也不应把 None 显示到页码上。"""
+    _in_stock(reagent, users["mgr"], qty=1)
+
+    for bad in ["None", "abc", "-1", ""]:
+        resp = client.get(f"/usage/records?page={bad}")
+        assert resp.status_code == 200, bad
+        assert b"None" not in resp.data, bad

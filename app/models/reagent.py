@@ -69,6 +69,14 @@ class Reagent(db.Model):
     STORAGE_FREEZE = "冷冻"    # -20℃ 以下
     STORAGE_CHOICES = [STORAGE_NORMAL, STORAGE_COOL, STORAGE_FREEZE]
 
+    # 最低库存预警单位
+    MIN_UNIT_PACK = "pack"   # 按大包装（盒/箱/袋）计数
+    MIN_UNIT_UNIT = "unit"   # 按最小使用单位（瓶/支/人份）计数
+    MIN_UNIT_CHOICES = [
+        (MIN_UNIT_PACK, "按大包装"),
+        (MIN_UNIT_UNIT, "按最小单位"),
+    ]
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, index=True, comment="试剂名称")
     category_id = db.Column(db.Integer, db.ForeignKey("reagent_category.id"), comment="所属分类")
@@ -76,7 +84,9 @@ class Reagent(db.Model):
     unit = db.Column(db.String(20), default="盒", comment="采购/整盒单位")
     pack_size = db.Column(db.Integer, default=1, comment="每盒包含的最小使用单位数（如每盒12瓶）")
     small_unit = db.Column(db.String(20), default="瓶", comment="最小使用单位（瓶/支/人份）")
-    min_stock = db.Column(db.Integer, default=10, comment="最低在库盒数预警值")
+    min_stock = db.Column(db.Integer, default=10, comment="最低库存预警值（单位见 min_stock_unit）")
+    min_stock_unit = db.Column(db.String(10), default=MIN_UNIT_PACK,
+                               comment="最低库存预警单位：pack=大包装 unit=最小单位")
     expire_warning_days = db.Column(db.Integer, default=90, comment="效期预警天数")
     storage_condition = db.Column(db.String(20), default=STORAGE_COOL, comment="存储条件")
     is_hazard = db.Column(db.SmallInteger, default=0, comment="是否危险品：1是 0否")
@@ -111,6 +121,42 @@ class Reagent(db.Model):
     def total_stock(self) -> int:
         """兼容旧调用：在库盒数"""
         return self.in_stock_boxes
+
+    @property
+    def in_stock_units(self) -> int:
+        """中心在库的最小单位数（整盒未开封，按每盒登记数量求和）"""
+        from app.models.stock import ReagentPack
+        return sum(p.total_units for p in self.packs
+                   if p.status == ReagentPack.STATUS_IN_STOCK)
+
+    @property
+    def available_units(self) -> int:
+        """全科可用瓶数：中心在库未开封 + 已出库未用完（科室在用）"""
+        return self.in_stock_units + self.in_use_units
+
+    @property
+    def min_stock_unit_text(self) -> str:
+        """最低库存预警值所用的单位名称"""
+        if self.min_stock_unit == self.MIN_UNIT_UNIT:
+            return self.small_unit or "瓶"
+        return self.unit or "盒"
+
+    @property
+    def current_stock_for_min(self) -> int:
+        """按预警口径计算当前库存量。
+
+        按大包装：只看中心在库盒数（科室已领出的盒不再计入）；
+        按最小单位：中心在库瓶数 + 科室已出库未用完瓶数（全科可用量）。
+        """
+        if self.min_stock_unit == self.MIN_UNIT_UNIT:
+            return self.available_units
+        return self.in_stock_boxes
+
+    @property
+    def is_low_stock(self) -> bool:
+        """当前在库量是否低于预警值（预警值为 0 表示不预警）"""
+        minv = self.min_stock or 0
+        return minv > 0 and self.current_stock_for_min < minv
 
     @property
     def in_use_units(self) -> int:

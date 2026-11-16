@@ -109,13 +109,15 @@
             <div class="card-body p-0">
                 {% if low_stock %}
                 <table class="table">
-                    <thead><tr><th>试剂</th><th>当前在库</th><th>最低预警</th><th>建议</th></tr></thead>
+                    <thead><tr><th>试剂</th><th>当前可用</th><th>最低预警</th><th>建议</th></tr></thead>
                     <tbody>
                     {% for r in low_stock %}
                     <tr>
                         <td class="cell-main">{{ r.reagent.name }}</td>
-                        <td>{{ r.current }} {{ r.reagent.unit }}</td>
-                        <td>{{ r.min }} {{ r.reagent.unit }}</td>
+                        <td>{{ r.current }} {{ r.unit_text }}
+                            {% if r.by_unit %}<div class="cell-sub">含科室在用 {{ r.issued_qty }}</div>{% endif %}
+                        </td>
+                        <td>{{ r.min }} {{ r.unit_text }}</td>
                         <td><span class="badge badge-soft-danger">{{ r.suggestion }}</span></td>
                     </tr>
                     {% endfor %}

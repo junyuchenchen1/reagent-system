@@ -197,7 +197,8 @@ function renderPacks(d, currentBatch) {
         '<div class="col-md-7 text-muted">生产企业：' + (esc(r.registrant) || '—') + '</div>' +
         '<div class="col-md-5 text-muted">存储条件：' + esc(r.storage_condition) + '</div>' +
         '<div class="col-md-7 text-muted">包装：1' + esc(u) + ' = ' + r.pack_size + ' ' + esc(su) + '</div>' +
-        '<div class="col-md-5 text-muted">最低库存：' + r.min_stock + ' ' + esc(u) + '</div>' +
+        '<div class="col-md-5 text-muted">在库最小单位：' + r.in_stock_units + ' ' + esc(su) + '（科室在用 ' + r.in_use_units + '，合计可用 ' + r.available_units + '）</div>' +
+        '<div class="col-md-5 text-muted">最低库存：' + r.min_stock + ' ' + esc(r.min_stock_unit_text) + '</div>' +
         (r.reg_no ? '<div class="col-12 text-muted">注册证号：' + esc(r.reg_no) + '</div>' : '') +
         '</div></div>';
 

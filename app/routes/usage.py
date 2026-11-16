@@ -10,6 +10,7 @@ from app.models.reagent import Reagent, Category
 from app.models.stock import ReagentPack, PackUse
 from app.services import stock_service
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
+from app.utils.paging import page_arg
 
 usage_bp = Blueprint("usage", __name__, url_prefix="/usage")
 
@@ -21,7 +22,7 @@ def index():
     keyword = request.args.get("keyword", "").strip()
     category_id = request.args.get("category_id", "")
     mfr = request.args.get("mfr", "")
-    page = int(request.args.get("page", 1))
+    page = page_arg()
 
     query = ReagentPack.query.join(Reagent, ReagentPack.reagent_id == Reagent.id).filter(
         ReagentPack.status.in_([ReagentPack.STATUS_ISSUED, ReagentPack.STATUS_USING]))
@@ -112,7 +113,7 @@ def add():
 def records():
     """使用记录"""
     keyword = request.args.get("keyword", "").strip()
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     query = PackUse.query.join(Reagent, PackUse.reagent_id == Reagent.id)
     if keyword:
         like = f"%{keyword}%"

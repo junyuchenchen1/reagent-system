@@ -11,6 +11,7 @@ from app.models.stock import StockOut, ReagentPack, Inventory
 from app.services import stock_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
+from app.utils.paging import page_arg
 from app.models.user import User
 from werkzeug.security import check_password_hash
 
@@ -20,7 +21,7 @@ stock_out_bp = Blueprint("stock_out", __name__)
 @stock_out_bp.route("/")
 @login_required
 def out_list():
-    page = int(request.args.get("page", 1))
+    page = page_arg()
     keyword = request.args.get("keyword", "").strip()
     out_type = request.args.get("out_type", "")
     status = request.args.get("status", "")
