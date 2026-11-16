@@ -4,10 +4,12 @@
     "use strict";
 
     document.addEventListener("DOMContentLoaded", function () {
-        // 所有普通表单统一带上 CSRF token；服务端会拒绝未校验的写请求。
+        // 只给写操作（POST）表单注入 CSRF token；GET 搜索/翻页表单若也注入会让 URL 变脏
         const csrfMeta = document.querySelector("meta[name='csrf-token']");
         if (csrfMeta) {
             document.querySelectorAll("form").forEach(function (form) {
+                const method = (form.getAttribute("method") || "get").toLowerCase();
+                if (method !== "post") { return; }
                 if (!form.querySelector("input[name='csrf_token']")) {
                     const input = document.createElement("input");
                     input.type = "hidden";

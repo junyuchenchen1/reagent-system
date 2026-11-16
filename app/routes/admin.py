@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.log import OperLog
 from app.models.stock import StockIn, StockOut, ReagentPack, PackUse
 from app.utils.permission import admin_required
-from app.utils.paging import page_arg
+from app.utils.paging import page_arg, paginate_query
 from app.utils.common import log_operation, export_excel, send_excel
 
 admin_bp = Blueprint("admin", __name__)
@@ -196,8 +196,7 @@ def log_list():
                    OperLog.content.like(f"%{keyword}%")))
     if module:
         query = query.filter(OperLog.module == module)
-    pagination = query.order_by(OperLog.id.desc()).paginate(
-        page=page, per_page=20, error_out=False)
+    pagination = paginate_query(query.order_by(OperLog.id.desc()), per_page=20)
     modules = [m[0] for m in db.session.query(OperLog.module).distinct().all()
                if m[0]]
     return render_template("admin/log.html", pagination=pagination,

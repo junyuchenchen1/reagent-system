@@ -487,3 +487,58 @@ def test_pagination_tolerates_bad_page_param(client, db_session, users, reagent)
         resp = client.get(f"/usage/records?page={bad}")
         assert resp.status_code == 200, bad
         assert b"None" not in resp.data, bad
+
+
+def test_pagination_has_jump_box_and_clamps_overflow(client, db_session, users, reagent):
+    """分页提供“跳至 N 页”输入框；页码超界自动落回末页，不出现空列表。"""
+    from app.models.stock import PackUse
+
+    pack = _in_stock(reagent, users["mgr"], qty=1)[0]
+    for i in range(16):
+        db_session.session.add(PackUse(
+            use_no=f"SY-T-{i:03d}", pack_id=pack.id, reagent_id=reagent.id,
+            units_used=1, use_type=PackUse.TYPE_USE, user_id=users["stf"].id))
+    db_session.session.commit()
+
+    html = client.get("/usage/records").get_data(as_text=True)
+    assert 'name="page"' in html            # 跳转输入框
+    assert "跳至" in html
+    assert "共 2 页" in html                # 16 条 / 每页 15 → 2 页
+
+    over = client.get("/usage/records?page=99")
+    assert over.status_code == 200
+    body = over.get_data(as_text=True)
+    assert "暂无使用记录" not in body       # 超界被夹到末页，而不是空页
+    assert "共 2 页" in body
+
+    kw = client.get("/usage/records?keyword=葡萄糖&page=99").get_data(as_text=True)
+    assert 'name="keyword" value="葡萄糖"' in kw   # 跳转/翻页保留查询条件
+
+
+def test_reagent_page_filters_manufacturers_by_category(client, db_session, users):
+    """分类 → 厂家联动：选定分类后，厂家下拉只显示该分类下有试剂的厂家。"""
+    from app.models.reagent import Category, Reagent
+
+    c1 = Category(name="血液试剂", sort=1)
+    c2 = Category(name="生化试剂", sort=2)
+    db_session.session.add_all([c1, c2])
+    db_session.session.commit()
+    db_session.session.add_all([
+        Reagent(name="A 试剂", category_id=c1.id, registrant="厂家甲"),
+        Reagent(name="B 试剂", category_id=c2.id, registrant="厂家乙"),
+    ])
+    db_session.session.commit()
+
+    html = client.get(f"/basic/reagent?category_id={c1.id}").get_data(as_text=True)
+    assert "厂家甲" in html and "厂家乙" in html   # 全集仍在下拉里，供切换分类时使用
+
+    tag_yi = html[html.index('value="厂家乙"'):]
+    tag_yi = tag_yi[:tag_yi.index(">") + 1]
+    assert "hidden disabled" in tag_yi            # 不属该分类 → 初始隐藏
+
+    tag_jia = html[html.index('value="厂家甲"'):]
+    tag_jia = tag_jia[:tag_jia.index(">") + 1]
+    assert "hidden disabled" not in tag_jia
+
+    ok = client.get("/basic/reagent?category_id=abc")   # 非法分类参数不报错
+    assert ok.status_code == 200

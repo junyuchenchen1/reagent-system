@@ -16,7 +16,9 @@
     <select class="form-select" name="mfr" style="max-width:200px;">
         <option value="">全部厂家</option>
         {% for m in manufacturers %}
-        <option value="{{ m }}" {{ 'selected' if mfr == m }}>{{ m }}</option>
+        <option value="{{ m }}" data-cats="{{ mfr_cat_map.get(m, [])|join(',') }}"
+                {% if category_id and category_id not in mfr_cat_map.get(m, []) %}hidden disabled{% endif %}
+                {{ 'selected' if mfr == m }}>{{ m }}</option>
         {% endfor %}
     </select>
     <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
@@ -235,5 +237,42 @@
         const el = document.getElementById(id);
         if (el) { el.addEventListener('input', updateMinHint); }
     });
+
+    // 分类 → 厂家 联动：选定分类后，厂家下拉只显示该分类下有试剂的厂家
+    (function () {
+        const catSel = document.querySelector("select[name='category_id']");
+        const mfrSel = document.querySelector("select[name='mfr']");
+        if (!catSel || !mfrSel) { return; }
+        function applyMfrFilter() {
+            const cat = catSel.value;
+            const keep = mfrSel.value;
+            let keepValid = false;
+            let visible = 0;
+            Array.prototype.forEach.call(mfrSel.options, function (opt) {
+                if (!opt.value) { return; }          // “全部厂家”始终可选
+                const cats = (opt.dataset.cats || '').split(',').filter(Boolean);
+                const matched = !cat || cats.indexOf(cat) >= 0;
+                opt.hidden = !matched;
+                opt.disabled = !matched;
+                if (matched) {
+                    visible += 1;
+                    if (opt.value === keep) { keepValid = true; }
+                }
+            });
+            // 已选厂家不属于新分类时自动回到“全部厂家”，避免提交出空结果
+            if (keep && !keepValid) { mfrSel.value = ''; }
+            const empty = mfrSel.querySelector('option[data-empty]');
+            if (empty) { empty.remove(); }
+            if (cat && visible === 0) {
+                const tip = document.createElement('option');
+                tip.textContent = '该分类暂无厂家';
+                tip.disabled = true;
+                tip.dataset.empty = '1';
+                mfrSel.appendChild(tip);
+            }
+        }
+        catSel.addEventListener('change', applyMfrFilter);
+        applyMfrFilter();
+    })();
 </script>
 {% endblock %}

@@ -11,7 +11,7 @@ from app.models.stock import StockIn, ReagentPack
 from app.services import stock_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
-from app.utils.paging import page_arg
+from app.utils.paging import page_arg, paginate_query
 
 stock_in_bp = Blueprint("stock_in", __name__)
 
@@ -45,8 +45,7 @@ def in_list():
     if end:
         query = query.filter(db.func.date(StockIn.create_time) <= end)
 
-    pagination = query.order_by(StockIn.id.desc()).paginate(
-        page=page, per_page=15, error_out=False)
+    pagination = paginate_query(query.order_by(StockIn.id.desc()))
     return render_template("stock/in_list.html",
                            pagination=pagination,
                            keyword=keyword, status=status,

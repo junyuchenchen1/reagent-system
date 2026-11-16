@@ -176,7 +176,7 @@ def create_app() -> Flask:
             "DB_TYPE_ACTUAL": app.config.get("DB_TYPE_ACTUAL", ""),
             "NOW": datetime.now(),
             # 静态资源版本号：修改 css/js 后把数字 +1，浏览器即强制刷新缓存
-            "STATIC_VERSION": "3",
+            "STATIC_VERSION": "4",
             "csrf_token": csrf_token,
             "pending_in": StockIn.query.filter_by(
                 status=StockIn.STATUS_PENDING).count(),

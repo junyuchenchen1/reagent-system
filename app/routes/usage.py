@@ -10,7 +10,7 @@ from app.models.reagent import Reagent, Category
 from app.models.stock import ReagentPack, PackUse
 from app.services import stock_service
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
-from app.utils.paging import page_arg
+from app.utils.paging import page_arg, paginate_query
 
 usage_bp = Blueprint("usage", __name__, url_prefix="/usage")
 
@@ -36,9 +36,9 @@ def index():
     if mfr:
         query = query.filter(Reagent.registrant == mfr)
 
-    pagination = query.order_by(
+    pagination = paginate_query(query.order_by(
         ReagentPack.status.desc(), ReagentPack.expire_date.asc(),
-        ReagentPack.id.asc()).paginate(page=page, per_page=15, error_out=False)
+        ReagentPack.id.asc()))
 
     total_boxes = ReagentPack.query.filter(ReagentPack.status.in_(
         [ReagentPack.STATUS_ISSUED, ReagentPack.STATUS_USING])).count()
@@ -120,8 +120,7 @@ def records():
         query = query.filter(db.or_(
             Reagent.name.like(like), PackUse.use_no.like(like),
             PackUse.pack.has(ReagentPack.barcode.like(like))))
-    pagination = query.order_by(PackUse.id.desc()).paginate(
-        page=page, per_page=15, error_out=False)
+    pagination = paginate_query(query.order_by(PackUse.id.desc()))
     return render_template("usage/records.html", pagination=pagination,
                            keyword=keyword)
 

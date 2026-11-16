@@ -1,4 +1,4 @@
-{# 分页导航宏：自动保留当前查询参数（page 除外） #}
+{# 分页导航宏：自动保留当前查询参数（page 除外），并支持跳转到指定页 #}
 {% macro pagination(pg, endpoint) %}
 {%- set p = {} -%}
 {%- for k, v in request.args.items() if k != 'page' -%}
@@ -6,7 +6,8 @@
 {%- endfor -%}
 {% if pg.pages > 1 %}
 <nav class="mt-4" aria-label="分页">
-    <ul class="pagination justify-content-center">
+  <div class="d-flex flex-wrap align-items-center justify-content-center gap-3">
+    <ul class="pagination mb-0">
         {% if pg.has_prev %}
         <li class="page-item"><a class="page-link" href="{{ url_for(endpoint, page=pg.prev_num, **p) }}" aria-label="上一页"><i class="bi bi-chevron-left"></i></a></li>
         {% else %}
@@ -25,6 +26,18 @@
         <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
         {% endif %}
     </ul>
+    <form class="d-flex align-items-center gap-1 mb-0" method="get" action="{{ url_for(endpoint) }}">
+        {% for k, v in p.items() %}
+        <input type="hidden" name="{{ k }}" value="{{ v }}">
+        {% endfor %}
+        <span class="text-muted small text-nowrap">跳至</span>
+        <input type="number" name="page" class="form-control form-control-sm text-center"
+               value="{{ pg.page }}" min="1" max="{{ pg.pages }}" step="1"
+               style="width:76px" aria-label="跳转页码" inputmode="numeric">
+        <span class="text-muted small text-nowrap">页，共 {{ pg.pages }} 页</span>
+        <button type="submit" class="btn btn-sm btn-primary text-nowrap">跳转</button>
+    </form>
+  </div>
 </nav>
 {% endif %}
 {% endmacro %}

@@ -11,7 +11,7 @@ from app.models.stock import StockOut, ReagentPack, Inventory
 from app.services import stock_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
-from app.utils.paging import page_arg
+from app.utils.paging import page_arg, paginate_query
 from app.models.user import User
 from werkzeug.security import check_password_hash
 
@@ -37,8 +37,7 @@ def out_list():
     if status != "":
         query = query.filter(StockOut.status == int(status))
 
-    pagination = query.order_by(StockOut.id.desc()).paginate(
-        page=page, per_page=15, error_out=False)
+    pagination = paginate_query(query.order_by(StockOut.id.desc()))
     # 预检查待确认出库单的批号验证状态
     from app.models.stock import StockIn as SI, ReagentPack
     for out in pagination.items:

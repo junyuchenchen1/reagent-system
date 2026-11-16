@@ -12,12 +12,14 @@ from app.models.stock import Inventory, StockCheck, StockIn, ReagentPack
 from app.services import stock_service, warning_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel
-from app.utils.paging import page_arg
+from app.utils.paging import page_arg, paginate_query, clamp_page
 
 inventory_bp = Blueprint("inventory", __name__)
 
 
 class SimplePagination:
+    """内存分页：实时库存需按"状态"在 Python 侧过滤后再分页，无法直接用 SQL 分页。"""
+
     def __init__(self, page, per_page, total, items):
         self.page, self.per_page, self.total, self.items = page, per_page, total, items
 
@@ -41,8 +43,17 @@ class SimplePagination:
     def next_num(self):
         return self.page + 1
 
-    def iter_pages(self):
-        return range(1, self.pages + 1)
+    def iter_pages(self, left_edge=2, left_current=2, right_current=2, right_edge=2):
+        """与 Flask-SQLAlchemy 的 iter_pages 一致：远距离页码用 None 占位（渲染成省略号）"""
+        last = 0
+        for n in range(1, self.pages + 1):
+            if (n <= left_edge
+                    or (self.page - left_current - 1 < n < self.page + right_current)
+                    or n > self.pages - right_edge):
+                if last + 1 != n:
+                    yield None
+                yield n
+                last = n
 
 
 # ===================== 实时库存（中心在库） =====================
@@ -75,6 +86,7 @@ def stock_list():
 
     per_page = 15
     total = len(items)
+    page = clamp_page(page, max(1, (total + per_page - 1) // per_page))
     paged = items[(page - 1) * per_page: page * per_page]
     pagination = SimplePagination(page, per_page, total, paged)
 
@@ -338,9 +350,9 @@ def temp_list():
     if bounds:
         query = query.filter(TempRecord.record_date >= bounds[0],
                              TempRecord.record_date < bounds[1])
-    pagination = query.options(joinedload(TempRecord.recorder)).order_by(
-        TempRecord.record_date.desc(), TempRecord.id.desc()).paginate(
-        page=page, per_page=20, error_out=False)
+    pagination = paginate_query(
+        query.options(joinedload(TempRecord.recorder)).order_by(
+            TempRecord.record_date.desc(), TempRecord.id.desc()), per_page=20)
     # 图表数据：按冰箱分组
     chart_recs = query.order_by(TempRecord.record_date.asc()).all()
     chart_data = {}

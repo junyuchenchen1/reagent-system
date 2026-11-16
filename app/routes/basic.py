@@ -238,7 +238,9 @@ def location_delete():
 @login_required
 def reagent_list():
     keyword = request.args.get("keyword", "").strip()
-    category_id = request.args.get("category_id", "")
+    category_id = request.args.get("category_id", "").strip()
+    if category_id and not category_id.isdigit():
+        category_id = ""
     mfr = request.args.get("mfr", "")
     query = Reagent.query
     if keyword:
@@ -249,11 +251,17 @@ def reagent_list():
         query = query.filter(Reagent.registrant == mfr)
     items = query.options(selectinload(Reagent.packs)).order_by(Reagent.id.desc()).all()
     categories = Category.query.order_by(Category.sort).all()
-    mfr_query = db.session.query(Reagent.registrant).filter(
-        Reagent.registrant != None, Reagent.registrant != '')
-    if category_id:
-        mfr_query = mfr_query.filter(Reagent.category_id == int(category_id))
-    manufacturers = [r[0] for r in mfr_query.distinct().order_by(Reagent.registrant).all()]
+    # 厂家与分类的对应关系（供前端“选分类后厂家下拉自动筛选”使用）
+    mfr_cat_rows = db.session.query(
+        Reagent.registrant, Reagent.category_id).filter(
+        Reagent.registrant != None, Reagent.registrant != '').distinct().all()
+    mfr_cat_map = {}
+    for name, cat_id in mfr_cat_rows:
+        mfr_cat_map.setdefault(name, set()).add(str(cat_id) if cat_id else "")
+    all_manufacturers = sorted(mfr_cat_map.keys())
+    # 厂家下拉给出全集，由 data-cats + 前端联动决定可见范围（服务端仍按 category_id 过滤列表）
+    manufacturers = all_manufacturers
+    mfr_cat_map = {k: sorted(v) for k, v in mfr_cat_map.items()}
     cat_query = db.session.query(Reagent.category_id).filter(Reagent.category_id != None)
     if mfr:
         cat_query = cat_query.filter(Reagent.registrant == mfr)
@@ -263,6 +271,7 @@ def reagent_list():
         filtered_categories = categories
     return render_template("basic/reagent.html", items=items,
                            categories=filtered_categories, manufacturers=manufacturers,
+                           mfr_cat_map=mfr_cat_map,
                            keyword=keyword, category_id=category_id, mfr=mfr)
 
 
