@@ -515,6 +515,17 @@ def test_pagination_has_jump_box_and_clamps_overflow(client, db_session, users, 
     assert 'name="keyword" value="葡萄糖"' in kw   # 跳转/翻页保留查询条件
 
 
+def test_main_js_injects_csrf_only_into_post_forms():
+    """main.js 只给 POST 表单注入 CSRF token，GET 搜索/翻页表单保持 URL 干净。"""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parent.parent
+          / "app" / "static" / "js" / "main.js").read_text(encoding="utf-8")
+    assert "meta[name='csrf-token']" in js
+    assert "method !== \"post\"" in js or "!== 'post'" in js
+    assert "input.name = \"csrf_token\"" in js or "csrf_token" in js
+
+
 def test_reagent_page_filters_manufacturers_by_category(client, db_session, users):
     """分类 → 厂家联动：选定分类后，厂家下拉只显示该分类下有试剂的厂家。"""
     from app.models.reagent import Category, Reagent

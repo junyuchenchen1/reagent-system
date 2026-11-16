@@ -36,9 +36,24 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 > 卸载请运行 `uninstall.ps1`。
 
+### 2.1 生成干净部署包（分发到其他电脑）
+
+`dist/` 下的 ZIP 是"干净部署包"：只有源码与安装脚本，**不含**数据库、`-wal`/`-shm`、日志、备份、`secret_key`、`__pycache__` 和 `.git`，解压到新电脑直接运行 `install.ps1` 即可。
+
+```powershell
+python tools/make_deploy_package.py                    # 版本号取当天日期
+python tools/make_deploy_package.py --version 20261116 # 指定版本号
+```
+
+- 产物：`dist/试剂管理系统_部署包_<版本>.zip`，根目录附 `部署步骤（请先看这里）.txt`
+- 排除规则写在 `tools/make_deploy_package.py` 的 `EXCLUDE_DIRS / EXCLUDE_SUFFIX / EXCLUDE_NAMES` 中；新增运行时数据目录要同步加进去
+- 包内保留空目录 `instance/`（含 `signatures`、`certs`）、`logs/`、`backups/`、`exports/`，避免首次启动因缺目录报错
+- 两份培训 docx 会一并打包（内含科室人员信息与系统截图），对外分发时解压后删除即可
+- 验证方式：解压到临时目录，用 `SQLITE_PATH` 指向临时库跑 `python init_db.py --empty`，再用初始密码登录，应得到 16 张表、1 个 admin、4 个存放位置
+
 ### 3. 初始化数据库（两种模式）
 
-**先说明一件容易误解的事**：`install.ps1` 第 7 步会立即启动服务，而服务首次启动时 `app/__init__.py` 就已经自动建好全部数据表、创建 `admin` 账号（随机一次性密码写入 `instance/initial_admin_password.txt`）、写入 4 个默认存放位置。所以"部署完成"时库里**不是空的**，已有表、管理员和存放位置，只是没有试剂、供应商等业务数据。
+**先说明一件容易误解的事**：`install.ps1` 的第 3.6 步会调用 `python init_db.py --empty` 完成建库——只要 `instance\reagent.db` 还不存在，就建好全部数据表、创建 `admin` 账号（随机一次性密码写入 `instance\initial_admin_password.txt`）、写入 4 个默认存放位置；库里已有数据库时该步直接跳过，不动现有数据。随后第 7 步启动服务。所以"部署完成"时库里**不是空的**，已有表、管理员和存放位置，只是没有试剂、供应商等业务数据。
 
 `init_db.py` 是在此基础上决定"要不要演示数据"，按用途二选一：
 
@@ -326,8 +341,10 @@ python -m pytest -q
 ├── backup.py                # 数据库备份（SQLite 在线备份接口）
 ├── restore.py               # 备份回滚
 ├── migrate.py               # 补齐查询索引（不改结构、不动数据）
-├── install.ps1              # Windows 一键部署
+├── install.ps1              # Windows 一键部署（含建库、依赖、计划任务、快捷方式、启动）
 ├── uninstall.ps1            # 卸载
+├── tools/                   # 运维辅助脚本（make_deploy_package.py 生成干净部署包）
+├── dist/                    # 部署包输出目录（.gitignore 已忽略）
 ├── start_server.vbs / stop_server.vbs / watchdog.vbs   # 启动/停止/看门狗
 ├── run.py                   # 启动入口
 └── requirements.txt

@@ -76,6 +76,24 @@ Get-ChildItem -Path $proj -Recurse -Directory -Filter "__pycache__" -ErrorAction
     ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 Write-Host "  已清理所有 __pycache__" -ForegroundColor Green
 
+# ---------- 3.6 初始化数据库（仅首次部署；已有库不动）----------
+Write-Host "`n[3.6] 初始化数据库 ..." -ForegroundColor Yellow
+$dbFile = Join-Path $proj "instance\reagent.db"
+if (Test-Path -LiteralPath $dbFile) {
+    Write-Host "  已存在数据库，跳过初始化（现有数据不受影响）" -ForegroundColor Green
+} else {
+    python (Join-Path $proj "init_db.py") --empty
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [警告] 初始化失败；服务首次启动时会自动建表并生成管理员密码" -ForegroundColor Red
+    } else {
+        Write-Host "  表结构已创建，管理员账号已生成" -ForegroundColor Green
+        $credFile = Join-Path $proj "instance\initial_admin_password.txt"
+        if (Test-Path -LiteralPath $credFile) {
+            Write-Host "  初始管理员密码文件：instance\initial_admin_password.txt" -ForegroundColor Green
+        }
+    }
+}
+
 # ---------- 4. 写 VBS 脚本（GBK 编码，兼容中文 Windows）----------
 Write-Host "`n[4/8] 生成 VBS 启动/停止/看门狗脚本 ..." -ForegroundColor Yellow
 $gbk = [System.Text.Encoding]::GetEncoding("GB2312")
