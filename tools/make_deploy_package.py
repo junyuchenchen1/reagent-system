@@ -20,6 +20,8 @@ OUT_DIR = BASE_DIR / "dist"
 # 整目录剔除（运行时数据、缓存、版本库）
 EXCLUDE_DIRS = {".git", ".pytest_cache", "__pycache__", "instance",
                 "logs", "backups", "exports", "dist", ".idea", ".vscode"}
+# 按目录名前缀剔除（药监局 UDI 原始发布文件解压目录，单包可达 300MB+）
+EXCLUDE_DIR_PREFIX = ("UDID_", "udi_data")
 # 按后缀剔除（数据库及其 WAL/SHM、字节码、日志、压缩包）
 EXCLUDE_SUFFIX = (".pyc", ".pyo", ".db", ".db-wal", ".db-shm", ".sqlite",
                   ".log", ".zip", ".tmp")
@@ -85,7 +87,9 @@ def build(version: str) -> Path:
         here = Path(dirpath)
         rel = here.relative_to(BASE_DIR)
         # 原地裁剪，os.walk 不再进入被排除的目录
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        dirnames[:] = [d for d in dirnames
+                       if d not in EXCLUDE_DIRS
+                       and not d.startswith(EXCLUDE_DIR_PREFIX)]
         for name in filenames:
             src = here / name
             if _excluded(src):

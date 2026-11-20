@@ -2,13 +2,13 @@
 """入库管理：登记、审核、详情、条码标签打印、导出"""
 from datetime import datetime, date
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, abort)
+                   flash, abort, jsonify)
 from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.models.reagent import Reagent, Supplier, Category, StorageLocation
 from app.models.stock import StockIn, ReagentPack
-from app.services import stock_service
+from app.services import stock_service, udi_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation, export_excel, send_excel, parse_export_range, range_label
 from app.utils.paging import page_arg, paginate_query
@@ -67,6 +67,7 @@ def in_add():
         remark = request.form.get("remark", "").strip()
         verifier_id = request.form.get("verifier_id") or None
         accept_status = request.form.get("accept_status", "合格")
+        udi_di = (request.form.get("udi_di", "") or "").strip()[:32]
 
         reagent = db.session.get(Reagent, int(reagent_id)) if reagent_id else None
         if reagent is None:
@@ -88,8 +89,12 @@ def in_add():
                 "unit_price": float(unit_price), "supplier_id": supplier_id,
                 "storage_location": storage_location, "remark": remark,
                 "verifier_id": int(verifier_id), "accept_status": accept_status,
+                "udi_di": udi_di,
             }
             si = stock_service.create_stock_in(data, current_user)
+            if udi_di:
+                # 记住“这个 DI 对应哪条试剂档案”，下次扫同款直接选中
+                udi_service.bind_reagent(udi_di, reagent.id)
             if current_user.is_manager:
                 stock_service.confirm_stock_in(si, current_user)
                 log_operation("入库管理",
@@ -116,6 +121,18 @@ def in_add():
                            suppliers=suppliers, categories=categories,
                            locations=locations, manufacturers=manufacturers,
                            verifiers=verifiers)
+
+
+@stock_in_bp.route("/udi", methods=["GET"])
+@login_required
+def udi_scan():
+    """扫试剂盒 DM 码：解析 GS1 内容 → 查 UDI 产品库 → 匹配本系统试剂。"""
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "缺少 code 参数"}), 400
+    if len(code) > 512:
+        code = code[:512]
+    return jsonify(udi_service.resolve(code))
 
 
 @stock_in_bp.route("/<int:sid>/audit", methods=["POST"])

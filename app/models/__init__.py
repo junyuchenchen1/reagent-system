@@ -7,9 +7,11 @@ from app.models.stock import (
     StockCheck, StockCheckItem, BarcodeSequence,
 )
 from app.models.log import OperLog
+from app.models.udi import UdiProduct
 
 __all__ = [
     "User", "Category", "Supplier", "Reagent",
     "StockIn", "StockOut", "ReagentPack", "PackUse", "Inventory",
     "StockCheck", "StockCheckItem", "BarcodeSequence", "OperLog",
+    "UdiProduct",
 ]

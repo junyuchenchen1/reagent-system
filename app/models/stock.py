@@ -38,6 +38,7 @@ class StockIn(db.Model):
     verifier_id = db.Column(db.Integer, db.ForeignKey("sys_user.id"), comment="验收人（双人验收）")
     accept_status = db.Column(db.String(10), default="合格", comment="接收状态：合格/破损/拒收")
     is_verified = db.Column(db.Boolean, default=False, comment="新批号是否已性能验证")
+    udi_di = db.Column(db.String(32), comment="入库时所扫 UDI 产品标识（可追溯）")
     audit_time = db.Column(db.DateTime, comment="审核时间")
     remark = db.Column(db.String(255))
     create_time = db.Column(db.DateTime, default=datetime.now)

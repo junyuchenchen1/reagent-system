@@ -8,7 +8,23 @@
         <a class="btn btn-light btn-sm" href="{{ url_for('stock_in.in_list') }}">返回列表</a>
     </div>
     <div class="card-body">
+        <div class="card mb-3" style="border-left:4px solid #0d6efd; background:#f8fbff;">
+            <div class="card-body py-2">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <span class="fw-bold"><i class="bi bi-upc-scan"></i> 扫试剂盒 UDI 码</span>
+                    <input class="form-control" id="udiInput" style="max-width:380px;"
+                           autocomplete="off"
+                           placeholder="扫码枪扫试剂盒 DM 码，自动带出试剂、批号、有效期">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="udiCamBtn">
+                        <i class="bi bi-camera"></i> 摄像头扫码
+                    </button>
+                    <span class="small text-muted">支持 GS1 Data Matrix（含 01 产品码 / 17 效期 / 10 批号）</span>
+                </div>
+                <div id="udiResult" class="mt-2"></div>
+            </div>
+        </div>
         <form method="post" id="inForm">
+            <input type="hidden" name="udi_di" id="udiDi" value="">
             <div class="row">
                 <div class="col-md-3 mb-3">
                     <label class="form-label">试剂分类（筛选）</label>
@@ -47,11 +63,11 @@
 
                 <div class="col-md-3 mb-3">
                     <label class="form-label required">批号</label>
-                    <input class="form-control" name="batch_no" required placeholder="如 072610A">
+                    <input class="form-control" name="batch_no" id="batchNo" required placeholder="如 072610A">
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label required">有效期</label>
-                    <input type="date" class="form-control" name="expire_date" required>
+                    <input type="date" class="form-control" name="expire_date" id="expireDate" required>
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label required">入库数量</label>
@@ -122,9 +138,25 @@
         </form>
     </div>
 </div>
+
+<div class="modal fade" id="udiCamModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-camera"></i> 摄像头扫描试剂盒 DM 码</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <video id="udiVideo" playsinline style="width:100%; border-radius:8px; background:#000;"></video>
+                <div class="form-text mt-2">把试剂盒上的黑色方块码（Data Matrix）对准镜头，识别成功后自动关闭。</div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/js/zxing.min.js') }}?v={{ STATIC_VERSION }}"></script>
 <script>
     const reagentSel = document.getElementById('reagent');
     const categorySel = document.getElementById('categoryFilter');
@@ -213,5 +245,130 @@
     }
     reagentSel.addEventListener('change', updateTip);
     quantityInput.addEventListener('input', updateHint);
+
+    // ===== UDI 扫码：扫码枪（键盘输入）+ 摄像头解码 =====
+    const udiInput = document.getElementById('udiInput');
+    const udiResult = document.getElementById('udiResult');
+    const udiDi = document.getElementById('udiDi');
+    const batchInput = document.getElementById('batchNo');
+    const expireInput = document.getElementById('expireDate');
+
+    function udiEscape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function showUdi(html, level) {
+        udiResult.innerHTML = '<div class="alert alert-' + level +
+            ' py-2 px-3 mb-0 small">' + html + '</div>';
+    }
+    function selectReagentById(id) {
+        categorySel.value = '';
+        mfrSel.value = '';
+        Array.from(categorySel.options).forEach(o => { o.hidden = false; });
+        Array.from(mfrSel.options).forEach(o => { o.hidden = false; });
+        Array.from(reagentSel.options).forEach(o => { o.hidden = false; });
+        reagentSel.value = String(id);
+        updateTip();
+    }
+    function handleUdi(code) {
+        if (!code) { return; }
+        udiInput.value = code;
+        fetch('/stock-in/udi?code=' + encodeURIComponent(code))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const p = d.parsed || {};
+                udiDi.value = p.di || '';
+                const parts = [];
+                if (p.batch_no) { batchInput.value = p.batch_no; parts.push('批号 <b>' + udiEscape(p.batch_no) + '</b>'); }
+                if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
+                const codeInfo = parts.length ? '码内信息：' + parts.join('，') : '';
+
+                if (!p.di && !parts.length) {
+                    showUdi('未从这串内容识别出 GS1 编码，请确认扫的是试剂盒的 DM 码（院内自印标签请用出库/使用页扫码）。', 'warning');
+                    return;
+                }
+                const prod = d.product;
+                let prodInfo = '';
+                if (prod) {
+                    prodInfo = '<div class="mt-1">UDI 库：<b>' + udiEscape(prod.name) + '</b>' +
+                        (prod.spec ? ' ｜ 规格 ' + udiEscape(prod.spec) : '') +
+                        (prod.mfr ? ' ｜ ' + udiEscape(prod.mfr) : '') +
+                        (prod.reg_no ? ' ｜ 注册证 ' + udiEscape(prod.reg_no) : '') + '</div>';
+                }
+                if (d.reagent_id) {
+                    selectReagentById(d.reagent_id);
+                    const opt = reagentSel.options[reagentSel.selectedIndex];
+                    showUdi('<i class="bi bi-check-circle text-success"></i> 已自动选中试剂：<b>' +
+                        udiEscape(opt ? opt.text.trim() : '') + '</b>' +
+                        (codeInfo ? '；' + codeInfo : '') + prodInfo, 'success');
+                    return;
+                }
+                let cand = '';
+                if (d.candidates && d.candidates.length) {
+                    cand = '<div class="mt-1">可能对应：' +
+                        d.candidates.map(function (c) {
+                            return '<button type="button" class="btn btn-sm btn-outline-primary me-1 mt-1 udi-cand" data-id="' +
+                                c.id + '">' + udiEscape(c.name) +
+                                (c.reason ? '（' + udiEscape(c.reason) + '）' : '') + '</button>';
+                        }).join('') + '</div>';
+                }
+                const lead = prod
+                    ? '<i class="bi bi-info-circle text-warning"></i> 已识别该产品，但还没对应到本系统试剂档案，请手工选择一次（选定后系统会记住这个码）'
+                    : '<i class="bi bi-exclamation-triangle text-warning"></i> 这个产品标识不在本地 UDI 库（未导入发布文件或属老批次），请手工选择试剂';
+                showUdi(lead + (codeInfo ? '；' + codeInfo : '') + prodInfo + cand, 'warning');
+            })
+            .catch(function () { showUdi('识别请求失败，请检查服务是否正常', 'danger'); });
+    }
+    udiInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const code = udiInput.value.trim();
+            if (code) { handleUdi(code); }
+        }
+    });
+    udiResult.addEventListener('click', function (e) {
+        const btn = e.target.closest('.udi-cand');
+        if (!btn) { return; }
+        selectReagentById(btn.dataset.id);
+        showUdi('<i class="bi bi-check-circle text-success"></i> 已选：<b>' +
+            udiEscape(btn.textContent) + '</b>（提交入库后系统会记住这个 UDI 码）', 'success');
+    });
+
+    let udiReader = null;
+    function stopUdiCam() {
+        if (udiReader) { try { udiReader.reset(); } catch (e) {} udiReader = null; }
+    }
+    document.getElementById('udiCamBtn').addEventListener('click', function () {
+        if (!window.isSecureContext) {
+            alert('摄像头扫码只能在 localhost 或 HTTPS 访问时使用。\n当前是 http://局域网IP 访问，浏览器禁止调用摄像头 —— 请直接用扫码枪扫 DM 码。');
+            return;
+        }
+        if (typeof ZXing === 'undefined') {
+            alert('解码库未加载，请刷新页面重试');
+            return;
+        }
+        const camModal = new bootstrap.Modal(document.getElementById('udiCamModal'));
+        camModal.show();
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,
+                  [ZXing.BarcodeFormat.DATA_MATRIX, ZXing.BarcodeFormat.QR_CODE]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        udiReader = new ZXing.BrowserMultiFormatReader(hints, 300);
+        udiReader.decodeFromVideoDevice(null, 'udiVideo', function (res) {
+            if (res) {
+                const text = res.getText();
+                stopUdiCam();
+                camModal.hide();
+                handleUdi(text);
+            }
+        }).catch(function (err) {
+            stopUdiCam();
+            camModal.hide();
+            alert('无法打开摄像头：' + (err && err.message ? err.message : err) +
+                  '\n请确认摄像头已连接，且浏览器已允许本站使用摄像头（地址栏左侧的摄像头图标）。');
+        });
+    });
+    document.getElementById('udiCamModal').addEventListener('hidden.bs.modal', stopUdiCam);
 </script>
 {% endblock %}

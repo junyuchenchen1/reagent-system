@@ -553,3 +553,173 @@ def test_reagent_page_filters_manufacturers_by_category(client, db_session, user
 
     ok = client.get("/basic/reagent?category_id=abc")   # 非法分类参数不报错
     assert ok.status_code == 200
+
+
+# ============================================================
+# UDI 扫码识别（DM 码解析 / 产品库 / 试剂匹配 / 入库绑定）
+# ============================================================
+DI = "06972487720754"
+
+
+def test_parse_dm_standard_without_separator():
+    """标准 GS1 码：01 定长 14 位，17 定长 6 位，10 变长读到结尾。"""
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm(f"01{DI}17" "281231" "10B2601A")
+    assert d["di"] == DI
+    assert d["batch_no"] == "B2601A"
+    assert d["expire_date"].isoformat() == "2028-12-31"
+
+
+def test_parse_dm_with_gs_separator_and_serial():
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm(f"01{DI}\x1d17281231\x1d10B2601A\x1d21SN0001")
+    assert d["di"] == DI
+    assert d["batch_no"] == "B2601A"
+    assert d["serial"] == "SN0001"
+
+
+def test_parse_dm_batch_before_expire_without_gs():
+    """批号在前且缺 GS 分隔时，应在下一个定长 AI（17）处截断。"""
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm(f"01{DI}10LOT2026A17281231")
+    assert d["batch_no"] == "LOT2026A"
+    assert d["expire_date"].isoformat() == "2028-12-31"
+
+
+def test_parse_dm_only_di():
+    from app.services.udi_service import parse_dm
+
+    assert parse_dm(DI)["di"] == DI
+
+
+def test_gs1_date_century_rule():
+    from app.services.udi_service import _gs1_date
+
+    assert _gs1_date("490101").year == 2049
+    assert _gs1_date("500101").year == 1950
+    assert _gs1_date("271332") is None          # 非法月份
+
+
+def test_udi_scan_api_matches_reagent(client, db_session):
+    """DI 命中产品库 + 名称一致 → 自动给出 reagent_id 与码内批号效期。"""
+    from app.models.reagent import Reagent
+    from app.models.udi import UdiProduct
+
+    db_session.session.add(UdiProduct(
+        di=DI, coding="GS1", name="CD38检测试剂", spec="50人份/盒",
+        mfr="北京同生时代生物技术有限公司", reg_no="京大械备20180038号",
+        cat="耗材", source="test"))
+    r = Reagent(name="CD38检测试剂", spec="50人份/盒", pack_size=1,
+                unit="盒", small_unit="人份")
+    db_session.session.add(r)
+    db_session.session.commit()
+
+    res = client.get(f"/stock-in/udi?code=01{DI}1728123110B2601A")
+    data = res.get_json()
+    assert data["found"] is True
+    assert data["product"]["name"] == "CD38检测试剂"
+    assert data["reagent_id"] == r.id
+    assert data["parsed"]["batch_no"] == "B2601A"
+    assert data["parsed"]["expire_date"] == "2028-12-31"
+
+
+def test_udi_scan_api_unknown_di_keeps_code_fields(client, db_session):
+    """DI 未收录时仍要回填码内批号与有效期，让用户只需手工选试剂。"""
+    res = client.get("/stock-in/udi?code=01123456789012341726063010Z9")
+    data = res.get_json()
+    assert data["found"] is False
+    assert data["product"] is None
+    assert data["reagent_id"] is None
+    assert data["parsed"]["batch_no"] == "Z9"
+    assert data["parsed"]["expire_date"] == "2026-06-30"
+
+
+def test_udi_scan_api_rejects_empty_code(client):
+    assert client.get("/stock-in/udi?code=").status_code == 400
+
+
+def test_in_add_page_has_udi_scanner(client):
+    html = client.get("/stock-in/add").get_data(as_text=True)
+    assert 'id="udiInput"' in html
+    assert 'name="udi_di"' in html
+    assert "zxing.min.js" in html
+    assert 'id="udiCamBtn"' in html
+
+
+def test_udi_import_filters_non_ivd(db_session, tmp_path):
+    """导入器只保留检验试剂类产品，耗材/设备不进库。"""
+    import zipfile
+
+    from app.models.udi import UdiProduct
+    from udi_import import import_package
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<udid version="1.0"><devices>
+  <device><zxxsdycpbs>{DI}</zxxsdycpbs><cpbsbmtxmc>GS1</cpbsbmtxmc>
+    <cpmctymc>CD38检测试剂</cpmctymc><ggxh>50人份/盒</ggxh>
+    <ylqxzcrbarmc>北京同生时代生物技术有限公司</ylqxzcrbarmc>
+    <zczbhhzbapzbh>京大械备20180038号</zczbhhzbapzbh><cplb>耗材</cplb></device>
+  <device><zxxsdycpbs>06970000000001</zxxsdycpbs><cpbsbmtxmc>GS1</cpbsbmtxmc>
+    <cpmctymc>一次性使用无菌注射器</cpmctymc><ggxh>5ml</ggxh>
+    <ylqxzcrbarmc>某器械公司</ylqxzcrbarmc><cplb>耗材</cplb></device>
+</devices></udid>"""
+    zpath = tmp_path / "udi.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("UDID_TEST.xml", xml)
+
+    stats = import_package(zpath)
+    assert stats["scanned"] == 2
+    assert stats["matched"] == 1                 # 只命中试剂那条
+    assert UdiProduct.query.count() == 1
+    assert UdiProduct.query.first().di == DI
+
+
+def test_stock_in_binds_udi_to_reagent(client, db_session, users, reagent):
+    """提交入库时保存 udi_di，并把 DI 与所选试剂绑定；下次扫同款自动选中。"""
+    from app.models.stock import StockIn
+    from app.models.udi import UdiProduct
+
+    db_session.session.add(UdiProduct(di=DI, coding="GS1", name="CD38检测试剂"))
+    db_session.session.commit()
+
+    resp = client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "B2601A",
+        "expire_date": "2028-12-31", "quantity": 1, "unit_price": 100,
+        "verifier_id": users["mgr"].id, "accept_status": "合格",
+        "udi_di": DI, "csrf_token": "test-token",
+    })
+    assert resp.status_code in (302, 200)
+
+    si = StockIn.query.order_by(StockIn.id.desc()).first()
+    assert si is not None and si.udi_di == DI
+    assert db_session.session.get(UdiProduct, DI).reagent_id == reagent.id
+
+
+def test_udi_import_cleans_duplicated_reg_no(tmp_path, db_session):
+    """药监局发布文件里注册证号常写成 "X号,X"，导入时按去掉"号"的归一值去重。"""
+    import zipfile
+
+    from app.models.udi import UdiProduct
+    from udi_import import _clean_reg, import_package
+
+    assert _clean_reg("京大械备20180038号,京大械备20180038") == "京大械备20180038号"
+    assert _clean_reg("豫郑械备20200152号;豫郑械备20200152号") == "豫郑械备20200152号"
+    assert _clean_reg("") == ""
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<udid version="1.0"><devices>
+  <device><zxxsdycpbs>{DI}</zxxsdycpbs><cpbsbmtxmc>GS1</cpbsbmtxmc>
+    <cpmctymc>CD38检测试剂</cpmctymc><ggxh>50人份/盒</ggxh>
+    <ylqxzcrbarmc>北京同生时代生物技术有限公司</ylqxzcrbarmc>
+    <zczbhhzbapzbh>京大械备20180038号,京大械备20180038</zczbhhzbapzbh>
+    <cplb>耗材</cplb></device>
+</devices></udid>"""
+    zpath = tmp_path / "udi_reg.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("UDID_TEST.xml", xml)
+
+    import_package(zpath)
+    assert UdiProduct.query.first().reg_no == "京大械备20180038号"

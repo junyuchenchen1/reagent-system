@@ -176,7 +176,7 @@ def create_app() -> Flask:
             "DB_TYPE_ACTUAL": app.config.get("DB_TYPE_ACTUAL", ""),
             "NOW": datetime.now(),
             # 静态资源版本号：修改 css/js 后把数字 +1，浏览器即强制刷新缓存
-            "STATIC_VERSION": "4",
+            "STATIC_VERSION": "5",
             "csrf_token": csrf_token,
             "pending_in": StockIn.query.filter_by(
                 status=StockIn.STATUS_PENDING).count(),
@@ -225,6 +225,7 @@ def create_app() -> Flask:
             _ensure_col("reagent_info", "agent", "VARCHAR(100)")
             _ensure_col("reagent_info", "cert_image", "VARCHAR(255)")
             _ensure_col("reagent_info", "min_stock_unit", "VARCHAR(10) DEFAULT 'pack'")
+            _ensure_col("stock_in", "udi_di", "VARCHAR(32)")
             _ensure_col("supplier", "license_expire_date", "DATE")
             _ensure_col("supplier", "supplier_type", "VARCHAR(20) DEFAULT '经销商'")
             _ensure_col("supplier", "cert_image", "VARCHAR(255)")
