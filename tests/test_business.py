@@ -723,3 +723,49 @@ def test_udi_import_cleans_duplicated_reg_no(tmp_path, db_session):
 
     import_package(zpath)
     assert UdiProduct.query.first().reg_no == "京大械备20180038号"
+
+
+def test_udi_import_reads_every_xml_in_package(tmp_path, db_session):
+    """药监局月度/全量包内是多个 XML，导入时要全部扫到，不能只看第一个。"""
+    import zipfile
+
+    from app.models.udi import UdiProduct
+    from udi_import import import_package
+
+    def device(di, name):
+        return f"""  <device><zxxsdycpbs>{di}</zxxsdycpbs><cpbsbmtxmc>GS1</cpbsbmtxmc>
+    <cpmctymc>{name}</cpmctymc><ggxh>100人份/盒</ggxh>
+    <ylqxzcrbarmc>某公司</ylqxzcrbarmc><cplb>耗材</cplb></device>"""
+
+    part1 = ('<?xml version="1.0" encoding="UTF-8"?>\n<udid version="1.0"><devices>\n'
+             + device("06970000000002", "丙氨酸氨基转移酶测定试剂盒") + "\n</devices></udid>")
+    part2 = ('<?xml version="1.0" encoding="UTF-8"?>\n<udid version="1.0"><devices>\n'
+             + device("06970000000003", "葡萄糖测定试剂盒") + "\n</devices></udid>")
+
+    zpath = tmp_path / "multi.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("PART1_Of_2.xml", part1)
+        zf.writestr("PART2_Of_2.xml", part2)
+
+    stats = import_package(zpath)
+    assert stats["files"] == 2
+    assert stats["matched"] == 2
+    assert UdiProduct.query.count() == 2
+
+
+def test_udi_import_accepts_directory(tmp_path, db_session):
+    """全量包解压后的目录可直接作为导入参数。"""
+    from app.models.udi import UdiProduct
+    from udi_import import import_package
+
+    for idx, name in enumerate(["尿酸测定试剂盒", "总胆红素测定试剂盒"], start=1):
+        (tmp_path / f"PART{idx}.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n<udid version="1.0"><devices>'
+            f"<device><zxxsdycpbs>0697000000000{idx + 3}</zxxsdycpbs>"
+            f"<cpmctymc>{name}</cpmctymc></device>"
+            "</devices></udid>", encoding="utf-8")
+
+    stats = import_package(tmp_path)
+    assert stats["files"] == 2
+    assert stats["matched"] == 2
+    assert UdiProduct.query.count() == 2

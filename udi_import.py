@@ -4,12 +4,13 @@
 用法：
     python udi_import.py D:\\下载\\UDID_MONTH_UPDATE_202610.zip
     python udi_import.py D:\\下载\\UDID_DAY_UPDATE_20261119.zip --dry-run
-    python udi_import.py <文件> --all          # 不过滤，导入全部产品（含耗材/设备）
-    python udi_import.py <文件> --limit 1000   # 只导入前 N 条符合条件的产品
+    python udi_import.py <文件或目录> --all          # 不过滤，导入全部产品（含耗材/设备）
+    python udi_import.py <文件或目录> --limit 1000   # 只导入前 N 条符合条件的产品
 
-发布文件来自 https://udi.nmpa.gov.cn/download.html （每日/每周/每月/全量），
-ZIP 内是 XML。默认按 IVD_KEYWORDS 过滤，只保留检验试剂类产品，库体积小、查得快。
-重复导入同一 DI 会更新产品信息（保留已绑定的试剂关系）。
+发布文件来自 https://udi.nmpa.gov.cn/download.html （每日/每周/每月/全量）。
+一个 ZIP 里会有多个 XML（全量包 1281 个），全部逐个扫描；解压后的目录也可直接传入。
+默认按 IVD_KEYWORDS 过滤，只保留检验试剂类产品，库体积小、查得快。
+重复导入同一 DI 会更新产品信息（保留已绑定的试剂关系），个别损坏文件会被跳过并提示。
 """
 import argparse
 import re
@@ -32,6 +33,22 @@ F_SPEC = "ggxh"
 F_MFR = "ylqxzcrbarmc"
 F_REG = "zczbhhzbapzbh"
 F_CAT = "cplb"
+
+# XML 1.0 不允许的控制字符（个别发布文件里混有裸控制符）
+_ILLEGAL_XML = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+class _CleanStream:
+    """包装二进制流，过滤非法控制字符，避免一个脏字节让整包解析失败。"""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def read(self, size=-1):
+        data = self._raw.read(size)
+        if not data:
+            return data
+        return _ILLEGAL_XML.sub(b" ", data)
 
 
 def _field(elem, tag: str) -> str:
@@ -62,16 +79,24 @@ def _is_ivd(name: str, reg_no: str, keywords=IVD_KEYWORDS) -> bool:
     return any(k in name for k in keywords) or "试剂" in (reg_no or "")
 
 
-def _open_xml(path: Path):
-    """返回 (需要关闭的对象, 字节流)。ZIP 里取第一个 XML。"""
+def _iter_sources(path: Path):
+    """逐个产出 (二进制流, 来源名)：直接给 XML、ZIP（内含多个 XML 时逐个来）、目录（遍历其下 XML/ZIP）。"""
+    if path.is_dir():
+        for item in sorted(path.iterdir()):
+            if item.suffix.lower() in (".xml", ".zip"):
+                yield from _iter_sources(item)
+        return
     if path.suffix.lower() == ".zip":
-        zf = zipfile.ZipFile(path)
-        names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
-        if not names:
-            zf.close()
-            raise SystemExit("ZIP 内没有 XML 文件")
-        return zf, zf.open(names[0])
-    return None, open(path, "rb")
+        with zipfile.ZipFile(path) as zf:
+            names = sorted(n for n in zf.namelist() if n.lower().endswith(".xml"))
+            if not names:
+                raise SystemExit(f"ZIP 内没有 XML 文件：{path.name}")
+            for name in names:
+                with zf.open(name) as stream:
+                    yield stream, f"{path.name}/{Path(name).name}"
+        return
+    with open(path, "rb") as stream:
+        yield stream, path.name
 
 
 def import_package(path, only_ivd: bool = True, dry_run: bool = False,
@@ -79,76 +104,86 @@ def import_package(path, only_ivd: bool = True, dry_run: bool = False,
     path = Path(path)
     if not path.exists():
         raise SystemExit(f"文件不存在：{path}")
-    source = source or path.name
 
-    handle, stream = _open_xml(path)
     stats = {"scanned": 0, "matched": 0, "written": 0, "no_di": 0,
-             "updated": 0, "created": 0}
+             "updated": 0, "created": 0, "files": 0, "skipped": 0}
     seen = set()
-    try:
-        # 用 start 事件抓根元素，便于定期释放内存（全量 XML 可能上 GB）
-        context = ET.iterparse(stream, events=("start", "end"))
-        root = None
-        pending = 0
-        for event, elem in context:
-            if root is None and event == "start":
-                root = elem
-            if event != "end" or elem.tag != "device":
-                continue
-            stats["scanned"] += 1
-            di = _field(elem, F_DI)
-            name = _field(elem, F_NAME)
-            reg = _clean_reg(_field(elem, F_REG))
-            if (not di) or (only_ivd and not _is_ivd(name, reg)):
-                if not di:
-                    stats["no_di"] += 1
-                if limit and stats["matched"] >= limit:
+    pending = 0
+    stop = False
+    for stream, origin in _iter_sources(path):
+        stats["files"] += 1
+        src_tag = (source or origin)[:80]
+        try:
+            # 用 start 事件抓根元素，便于定期释放内存（全量 XML 可能上 GB）
+            context = ET.iterparse(_CleanStream(stream), events=("start", "end"))
+            root = None
+            for event, elem in context:
+                if root is None and event == "start":
+                    root = elem
+                if event != "end" or elem.tag != "device":
+                    continue
+                stats["scanned"] += 1
+                di = _field(elem, F_DI)
+                name = _field(elem, F_NAME)
+                reg = _clean_reg(_field(elem, F_REG))
+                if (not di) or (only_ivd and not _is_ivd(name, reg)):
+                    if not di:
+                        stats["no_di"] += 1
                     elem.clear()
-                    break
+                    if root is not None and stats["scanned"] % 5000 == 0:
+                        root.clear()
+                    if limit and stats["matched"] >= limit:
+                        stop = True
+                        break
+                    continue
+
+                stats["matched"] += 1
+                if not dry_run and di not in seen:
+                    seen.add(di)
+                    obj = UdiProduct(
+                        di=di, coding=_field(elem, F_CODING), name=name[:200],
+                        spec=_field(elem, F_SPEC)[:255],
+                        mfr=_field(elem, F_MFR)[:200], reg_no=reg[:200],
+                        cat=_field(elem, F_CAT)[:20], source=src_tag)
+                    existed = db.session.get(UdiProduct, di) is not None
+                    if existed:
+                        # 更新产品信息，保留已绑定的 reagent_id
+                        db.session.merge(obj)
+                        stats["updated"] += 1
+                    else:
+                        db.session.add(obj)
+                        stats["created"] += 1
+                    stats["written"] += 1
+                    pending += 1
+                    if pending >= 300:
+                        db.session.commit()
+                        pending = 0
+
                 elem.clear()
                 if root is not None and stats["scanned"] % 5000 == 0:
                     root.clear()
-                continue
+                if limit and stats["matched"] >= limit:
+                    stop = True
+                    break
+        except ET.ParseError as exc:
+            stats["skipped"] += 1
+            print(f"[UDI] 跳过解析失败的文件：{origin}（{exc}）")
+        except OSError as exc:
+            stats["skipped"] += 1
+            print(f"[UDI] 读取失败，跳过：{origin}（{exc}）")
 
-            stats["matched"] += 1
-            if not dry_run and di not in seen:
-                seen.add(di)
-                obj = UdiProduct(
-                    di=di, coding=_field(elem, F_CODING), name=name[:200],
-                    spec=_field(elem, F_SPEC)[:255],
-                    mfr=_field(elem, F_MFR)[:200], reg_no=reg[:200],
-                    cat=_field(elem, F_CAT)[:20], source=source[:80])
-                existed = db.session.get(UdiProduct, di) is not None
-                if existed:
-                    # 更新产品信息，保留已绑定的 reagent_id
-                    db.session.merge(obj)
-                    stats["updated"] += 1
-                else:
-                    db.session.add(obj)
-                    stats["created"] += 1
-                stats["written"] += 1
-                pending += 1
-                if pending >= 300:
-                    db.session.commit()
-                    pending = 0
-
-            elem.clear()
-            if root is not None and stats["scanned"] % 5000 == 0:
-                root.clear()
-            if limit and stats["matched"] >= limit:
-                break
         if not dry_run and pending:
             db.session.commit()
-    finally:
-        stream.close()
-        if handle is not None:
-            handle.close()
+            pending = 0
+        if stop:
+            break
+
     return stats
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="导入药监局 UDI 发布文件")
-    parser.add_argument("file", help="ZIP 或 XML 路径")
+    parser.add_argument("file", help="ZIP / XML / 目录（目录下 XML、ZIP 会逐个导入）")
     parser.add_argument("--all", action="store_true",
                         help="不过滤，导入全部产品（耗材/设备也导入）")
     parser.add_argument("--dry-run", action="store_true", help="只统计不写库")
@@ -165,7 +200,10 @@ def main() -> None:
         stats = import_package(args.file, only_ivd=not args.all,
                                dry_run=args.dry_run, limit=args.limit,
                                source=args.source)
-        print(f"[UDI] 扫描 {stats['scanned']} 条，命中检验试剂 {stats['matched']} 条")
+        print(f"[UDI] 扫描 {stats['scanned']} 条（{stats['files']} 个文件），"
+              f"命中检验试剂 {stats['matched']} 条")
+        if stats["skipped"]:
+            print(f"[UDI] 跳过 {stats['skipped']} 个无法解析的文件（其余文件已正常导入）")
         if args.dry_run:
             print("[UDI] 试运行，未写入数据库")
         else:

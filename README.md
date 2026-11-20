@@ -298,11 +298,19 @@ python udi_import.py D:\下载\UDID_DAY_UPDATE_20261119.zip
 # 先看命中多少条，不写库
 python udi_import.py D:\下载\UDID_DAY_UPDATE_20261119.zip --dry-run
 
+# 用全量包补历史产品（只导检验试剂子集，包内 1281 个 XML 会全部扫到，约 15~20 分钟）
+python udi_import.py D:\下载\UDID_FULL_RELEASE_20261101.zip
+
+# 解压后的目录同样可以传（目录下的 XML / ZIP 逐个导入）
+python udi_import.py D:\下载\UDID_FULL_RELEASE_20261101
+
 # 全量导入（含耗材、设备，约 640 万条，库会涨到几百 MB，不建议）
 python udi_import.py D:\下载\UDID_FULL_RELEASE_20261101.zip --all
 ```
 
-发布文件从 <https://udi.nmpa.gov.cn/download.html> 下载（每日包约 0.4MB、每周/每月包更大、全量包 300MB+）。重复导入同一 DI 只更新产品信息，**已建立的 DI↔试剂绑定关系会保留**。
+发布文件从 <https://udi.nmpa.gov.cn/download.html> 下载（每日包约 0.4MB、每周/每月包更大、全量包 300MB+）。**每日包和全量包都按要求处理：ZIP 里不止一个 XML 时会逐个扫描，不会只看第一个。**重复导入同一 DI 只更新产品信息，**已建立的 DI↔试剂绑定关系会保留**。
+
+日常建议：先导一次全量包补齐历史产品，之后每月导一次月度包（或每周导一次周包）保持新增产品同步。
 
 **匹配规则**：拿 DI 查到产品后，在试剂档案里按注册证号、名称、厂家打分（注册证相同权重最高，名称去括号后相等次之，厂家相同再加分）；最高分 ≥75 且唯一命中时**自动选中该试剂**，否则列出最多 5 个候选让人工点选。DI 不在库里时，页面上仍会把码里的批号、有效期填进表单，只差选试剂。
 
@@ -324,7 +332,7 @@ python udi_import.py D:\下载\UDID_FULL_RELEASE_20261101.zip --all
 python -m pytest -q
 ```
 
-当前 **39 个用例**（`tests/test_business.py`，Python 3.14 实测全部通过），逐项覆盖：
+当前 **41 个用例**（`tests/test_business.py`，Python 3.14 实测全部通过），逐项覆盖：
 
 1. 条码 10 位且不重复；
 2. 入库按盒生成条码盒（盒数 = 条码数）；
@@ -364,7 +372,9 @@ python -m pytest -q
 36. 入库页渲染出扫码框、隐藏 `udi_di`、摄像头按钮与本地 ZXing；
 37. 导入器按检验试剂关键词过滤，耗材不入选；
 38. 注册证号重复（`X号,X`）导入时按归一值去重；
-39. 提交入库时保存 `stock_in.udi_di`，并把 DI 与所选试剂绑定。
+39. 提交入库时保存 `stock_in.udi_di`，并把 DI 与所选试剂绑定；
+40. ZIP 内多个 XML 全部扫描（月度/全量包不能只看第一个文件）；
+41. 解压后的目录可直接作为导入参数，逐个文件导入。
 
 > 测试夹具（`tests/conftest.py`）在导入 app 之前就把 `SQLITE_PATH` 指向系统临时目录，因此**任何一次 pytest 都不会碰 `instance/reagent.db`**。
 
