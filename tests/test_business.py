@@ -658,6 +658,8 @@ def test_in_add_page_guides_to_create_reagent(client):
     html = client.get("/stock-in/add").get_data(as_text=True)
     assert "新建这条试剂档案" in html
     assert "/basic/reagent?new=1" in html or "udiCreateLink" in html
+    # 链接拼进 innerHTML 前必须把 & 转义，否则 "&reg_no=" 会被当成实体 ®
+    assert "replace(/&/g, '&amp;')" in html
     assert 'const UDI_AUTO = "";' in html          # 未带 udi 参数时不自动重扫
 
     html2 = client.get(f"/stock-in/add?udi={DI}").get_data(as_text=True)
@@ -674,6 +676,18 @@ def test_reagent_list_prefills_from_udi(client):
     assert "国械注准20183400568" in html
     assert "const PREFILL" in html
     assert 'id="f_udi"' in html
+
+
+def test_reagent_list_unescapes_mangled_spec(client):
+    """旧链接把 &reg_no= 当实体 ® 解析，注册证会并进规格里；服务端要还原成两个字段。"""
+    html = client.get(
+        "/basic/reagent?new=1&spec=100测试/盒®_no=国械注准20183400568".replace("®", "%C2%AE")
+        + "&registrant=深圳市新产业"
+    ).get_data(as_text=True)
+    seg = html.split("const PREFILL")[-1][:300]
+    assert '"spec": "100测试/盒"' in seg
+    assert '"reg_no": "国械注准20183400568"' in seg
+    assert "®" not in seg
 
 
 def test_reagent_save_with_udi_binds_and_returns_to_stock_in(client, db_session):

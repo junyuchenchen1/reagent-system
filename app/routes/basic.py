@@ -24,12 +24,37 @@ ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".bmp"}
 
 def _udi_prefill() -> dict:
     """从入库页扫码跳来时携带的 UDI 信息（名称/规格/注册证/注册人）用于预填新增弹窗。"""
+    spec = (request.args.get("spec") or "").strip()[:255]
+    reg_no = (request.args.get("reg_no") or "").strip()[:200]
+    registrant = (request.args.get("registrant") or "").strip()[:200]
+
+    # 兼容旧版链接：href 里的 "&reg_no=" / "&registrant=" 被 HTML 当实体解析成 "®..."，
+    # 分隔符一丢，这两段就并进了 spec。这里按 ® 切开还原。
+    if "®" in spec:
+        head, *tails = spec.split("®")
+        spec = head.strip()
+        for seg in tails:
+            if seg.startswith("_no=") and not reg_no:
+                reg_no = seg[4:].strip()[:200]
+            elif seg.startswith("istrant=") and not registrant:
+                registrant = seg[8:].strip()[:200]
+    else:
+        for key, mark in (("reg_no", "&reg_no="), ("registrant", "&registrant=")):
+            if mark in spec:
+                head, _, rest = spec.partition(mark)
+                spec = head.strip()
+                val = rest.split("&")[0].strip()[:200]
+                if key == "reg_no" and not reg_no:
+                    reg_no = val
+                elif key == "registrant" and not registrant:
+                    registrant = val
+
     return {
         "open": bool(request.args.get("new")),
         "name": (request.args.get("name") or "").strip()[:200],
-        "spec": (request.args.get("spec") or "").strip()[:255],
-        "reg_no": (request.args.get("reg_no") or "").strip()[:200],
-        "registrant": (request.args.get("registrant") or "").strip()[:200],
+        "spec": spec,
+        "reg_no": reg_no,
+        "registrant": registrant,
         "udi_di": (request.args.get("udi_di") or "").strip()[:32],
         "udi": (request.args.get("udi") or "").strip()[:512],
     }

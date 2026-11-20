@@ -283,8 +283,10 @@
             if (prod.di) { q.set('udi_di', prod.di); }
         }
         if (code) { q.set('udi', code); }
-        return '<a class="btn btn-sm btn-success ms-1 mt-1" href="' + REAGENT_NEW_URL + '?' + q.toString() +
-            '">＋ 新建这条试剂档案</a>';
+        // 这段 HTML 会被 innerHTML 解析："&reg_no=" 里的 "&reg" 会被当成实体 ®，
+        // 参数分隔符就丢了（reg_no 被并进 spec）。所以 & 必须写成 &amp;。
+        return '<a class="btn btn-sm btn-success ms-1 mt-1" href="' + REAGENT_NEW_URL + '?' +
+            q.toString().replace(/&/g, '&amp;') + '">＋ 新建这条试剂档案</a>';
     }
     function selectReagentById(id) {
         categorySel.value = '';
