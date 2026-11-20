@@ -18,7 +18,11 @@
                     <button type="button" class="btn btn-outline-primary btn-sm" id="udiCamBtn">
                         <i class="bi bi-camera"></i> 摄像头扫码
                     </button>
-                    <span class="small text-muted">支持 GS1 Data Matrix（含 01 产品码 / 17 效期 / 10 批号）</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="udiPhotoBtn">
+                        <i class="bi bi-image"></i> 拍照识别
+                    </button>
+                    <input type="file" id="udiPhoto" accept="image/*" capture="environment" class="d-none">
+                    <span class="small text-muted">支持 GS1 Data Matrix（含 01 产品码 / 17 效期 / 10 批号）；手机/局域网请用“拍照识别”</span>
                 </div>
                 <div id="udiResult" class="mt-2"></div>
             </div>
@@ -333,6 +337,52 @@
         selectReagentById(btn.dataset.id);
         showUdi('<i class="bi bi-check-circle text-success"></i> 已选：<b>' +
             udiEscape(btn.textContent) + '</b>（提交入库后系统会记住这个 UDI 码）', 'success');
+    });
+
+    // 拍照识别：手机 / 局域网（http 非安全上下文）也能用，上传照片不要求 HTTPS
+    const udiPhotoInput = document.getElementById('udiPhoto');
+    document.getElementById('udiPhotoBtn').addEventListener('click', function () {
+        if (typeof ZXing === 'undefined') {
+            alert('解码库未加载，请刷新页面重试');
+            return;
+        }
+        udiPhotoInput.value = '';
+        udiPhotoInput.click();
+    });
+    udiPhotoInput.addEventListener('change', function () {
+        const file = udiPhotoInput.files && udiPhotoInput.files[0];
+        if (!file) { return; }
+        const fail = '照片里没有识别到 DM 码，请靠近一点、把码放正、避免反光再拍一次';
+        showUdi('正在识别照片…', 'info');
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,
+                  [ZXing.BarcodeFormat.DATA_MATRIX, ZXing.BarcodeFormat.QR_CODE]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        const reader = new ZXing.BrowserMultiFormatReader(hints, 500);
+        const objUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+            // 手机原图可能 4000px 以上，先缩到长边 1600 再解码：快得多，成功率也够
+            const maxSide = 1600;
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(img.width * scale);
+            cv.height = Math.round(img.height * scale);
+            cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+            reader.decodeFromImageUrl(cv.toDataURL('image/jpeg', 0.92)).then(function (res) {
+                URL.revokeObjectURL(objUrl);
+                if (res && res.getText()) { handleUdi(res.getText()); }
+                else { showUdi(fail, 'warning'); }
+            }).catch(function () {
+                URL.revokeObjectURL(objUrl);
+                showUdi(fail, 'warning');
+            });
+        };
+        img.onerror = function () {
+            URL.revokeObjectURL(objUrl);
+            showUdi('这张图片打不开，请重新拍照或换一张', 'danger');
+        };
+        img.src = objUrl;
     });
 
     let udiReader = null;

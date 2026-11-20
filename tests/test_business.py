@@ -647,6 +647,10 @@ def test_in_add_page_has_udi_scanner(client):
     assert 'name="udi_di"' in html
     assert "zxing.min.js" in html
     assert 'id="udiCamBtn"' in html
+    # 拍照识别：手机/局域网（http 非安全上下文）下不必调摄像头也能扫
+    assert 'id="udiPhotoBtn"' in html
+    assert 'id="udiPhoto"' in html
+    assert 'accept="image/*"' in html
 
 
 def test_udi_import_filters_non_ivd(db_session, tmp_path):
