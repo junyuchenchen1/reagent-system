@@ -653,6 +653,51 @@ def test_in_add_page_has_udi_scanner(client):
     assert 'accept="image/*"' in html
 
 
+def test_in_add_page_guides_to_create_reagent(client):
+    """档案里没有该试剂时，结果卡片给出「新建这条试剂档案」入口，并把码带过去自动重扫。"""
+    html = client.get("/stock-in/add").get_data(as_text=True)
+    assert "新建这条试剂档案" in html
+    assert "/basic/reagent?new=1" in html or "udiCreateLink" in html
+    assert 'const UDI_AUTO = "";' in html          # 未带 udi 参数时不自动重扫
+
+    html2 = client.get(f"/stock-in/add?udi={DI}").get_data(as_text=True)
+    assert DI in html2.split("const UDI_AUTO")[1][:40]
+
+
+def test_reagent_list_prefills_from_udi(client):
+    """从入库页扫码跳来建档：新增弹窗自动打开并预填名称/规格/注册证/注册人/UDI。"""
+    html = client.get(
+        "/basic/reagent?new=1&name=HIV抗原抗体试剂盒&spec=100测试/盒"
+        f"&reg_no=国械注准20183400568&registrant=深圳新产业&udi_di={DI}&udi=010{DI}B2601A"
+    ).get_data(as_text=True)
+    assert "HIV抗原抗体试剂盒" in html
+    assert "国械注准20183400568" in html
+    assert "const PREFILL" in html
+    assert 'id="f_udi"' in html
+
+
+def test_reagent_save_with_udi_binds_and_returns_to_stock_in(client, db_session):
+    """扫码建档保存后：DI 绑定到新档案，并回跳到入库页自动重扫。"""
+    from app.models.reagent import Reagent
+    from app.models.udi import UdiProduct
+
+    resp = client.post("/basic/reagent/save", data={
+        "name": "HIV抗原抗体检测试剂盒", "spec": "100测试/盒",
+        "reg_no": "国械注准20183400568", "registrant": "深圳新产业",
+        "unit": "盒", "pack_size": 1, "small_unit": "瓶",
+        "min_stock": 1, "min_stock_unit": "pack", "status": "on",
+        "udi_di": DI, "udi": f"010{DI}B2601A", "csrf_token": "test-token",
+    })
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert "/stock-in/add" in location
+    assert DI in location
+
+    new = Reagent.query.filter_by(name="HIV抗原抗体检测试剂盒").first()
+    assert new is not None
+    assert db_session.session.get(UdiProduct, DI).reagent_id == new.id
+
+
 def test_udi_import_filters_non_ivd(db_session, tmp_path):
     """导入器只保留检验试剂类产品，耗材/设备不进库。"""
     import zipfile

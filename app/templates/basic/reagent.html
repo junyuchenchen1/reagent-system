@@ -98,6 +98,8 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="id" id="f_id">
+                    <input type="hidden" name="udi_di" id="f_udi" value="">
+                    <input type="hidden" name="udi" id="f_udi_code" value="">
                     <div class="row">
                         <div class="col-md-6 mb-3"><label class="form-label required">试剂名称</label>
                             <input class="form-control" name="name" id="f_name" required></div>
@@ -169,6 +171,8 @@
     const modalEl = document.getElementById('editModal');
     function openModal() {
         document.getElementById('f_id').value = '';
+        document.getElementById('f_udi').value = '';
+        document.getElementById('f_udi_code').value = '';
         ['name','spec','remark'].forEach(k => document.getElementById('f_' + k).value = '');
         document.getElementById('f_category').value = '';
         document.getElementById('f_unit').value = '盒';
@@ -274,5 +278,19 @@
         catSel.addEventListener('change', applyMfrFilter);
         applyMfrFilter();
     })();
+
+    // 从入库页扫码跳过来：自动打新增弹窗并带上 UDI 信息（保存后自动回到入库页）
+    const PREFILL = {{ (prefill or {})|tojson }};
+    if (PREFILL && (PREFILL.open || PREFILL.name)) {
+        openModal();
+        document.getElementById('f_name').value = PREFILL.name || '';
+        document.getElementById('f_spec').value = PREFILL.spec || '';
+        document.getElementById('f_regno').value = PREFILL.reg_no || '';
+        document.getElementById('f_registrant').value = PREFILL.registrant || '';
+        document.getElementById('f_udi').value = PREFILL.udi_di || '';
+        document.getElementById('f_udi_code').value = PREFILL.udi || '';
+        document.getElementById('modalTitle').textContent = PREFILL.name ? '新增试剂（来自 UDI 扫码）' : '新增试剂';
+        updateMinHint();
+    }
 </script>
 {% endblock %}

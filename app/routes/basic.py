@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.models.reagent import Category, Supplier, Reagent, StorageLocation
 from app.models.stock import (StockIn, Inventory, StockOut, ReagentPack, PackUse)
+from app.services import udi_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation
 
@@ -19,6 +20,19 @@ basic_bp = Blueprint("basic", __name__)
 CERT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "instance", "certs")
 os.makedirs(CERT_DIR, exist_ok=True)
 ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".bmp"}
+
+
+def _udi_prefill() -> dict:
+    """从入库页扫码跳来时携带的 UDI 信息（名称/规格/注册证/注册人）用于预填新增弹窗。"""
+    return {
+        "open": bool(request.args.get("new")),
+        "name": (request.args.get("name") or "").strip()[:200],
+        "spec": (request.args.get("spec") or "").strip()[:255],
+        "reg_no": (request.args.get("reg_no") or "").strip()[:200],
+        "registrant": (request.args.get("registrant") or "").strip()[:200],
+        "udi_di": (request.args.get("udi_di") or "").strip()[:32],
+        "udi": (request.args.get("udi") or "").strip()[:512],
+    }
 
 
 def save_cert_file(file):
@@ -272,7 +286,8 @@ def reagent_list():
     return render_template("basic/reagent.html", items=items,
                            categories=filtered_categories, manufacturers=manufacturers,
                            mfr_cat_map=mfr_cat_map,
-                           keyword=keyword, category_id=category_id, mfr=mfr)
+                           keyword=keyword, category_id=category_id, mfr=mfr,
+                           prefill=_udi_prefill())
 
 
 @basic_bp.route("/reagent/save", methods=["POST"])
@@ -322,6 +337,15 @@ def reagent_save():
         db.session.add(obj)
         log_operation("基础数据", f"新增试剂档案：{data['name']}")
     db.session.commit()
+
+    # 扫码建档闭环：记住这个 UDI 码 → 回到入库页自动重扫，省去再扫一次
+    udi_di = (request.form.get("udi_di", "") or "").strip()[:32]
+    udi_code = (request.form.get("udi", "") or "").strip()[:512]
+    if udi_di and not rid:
+        udi_service.bind_reagent(udi_di, obj.id)
+        flash("已保存，并记住该产品标识；下面是入库页，已自动重新识别这条试剂。", "success")
+        return redirect(url_for("stock_in.in_add", udi=(udi_code or udi_di)))
+
     flash("保存成功", "success")
     return redirect(url_for("basic.reagent_list"))
 

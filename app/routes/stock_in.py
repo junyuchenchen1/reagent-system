@@ -120,7 +120,9 @@ def in_add():
     return render_template("stock/in_add.html", reagents=reagents,
                            suppliers=suppliers, categories=categories,
                            locations=locations, manufacturers=manufacturers,
-                           verifiers=verifiers)
+                           verifiers=verifiers,
+                           udi_code=(request.args.get("udi") or "").strip()[:512],
+                           can_create_reagent=current_user.is_manager)
 
 
 @stock_in_bp.route("/udi", methods=["GET"])

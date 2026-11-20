@@ -42,6 +42,8 @@ def _ensure_mysql() -> bool:
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
+    # 中文不转成 \uXXXX：接口和页面里的 tojson 都是可读中文，体积也更小
+    app.json.ensure_ascii = False
     os.makedirs(app.config["EXPORT_FOLDER"], exist_ok=True)
     os.makedirs(os.path.join(Config.BASE_DIR, "instance"), exist_ok=True)
 

@@ -266,6 +266,26 @@
         udiResult.innerHTML = '<div class="alert alert-' + level +
             ' py-2 px-3 mb-0 small">' + html + '</div>';
     }
+    const REAGENT_NEW_URL = '{{ url_for("basic.reagent_list") }}';
+    const CAN_CREATE_REAGENT = {{ 'true' if can_create_reagent else 'false' }};
+    // 扫码信息（名称/规格/注册证/厂家）带到试剂档案新增弹窗，保存后自动回到本页并重新识别
+    function udiCreateLink(prod, code) {
+        if (!CAN_CREATE_REAGENT) {
+            return '<div class="mt-1 small">当前账号没有建档权限，请让组长在「基础数据 → 试剂档案」里先建这一条。</div>';
+        }
+        const q = new URLSearchParams();
+        q.set('new', '1');
+        if (prod) {
+            if (prod.name) { q.set('name', prod.name); }
+            if (prod.spec) { q.set('spec', prod.spec); }
+            if (prod.reg_no) { q.set('reg_no', prod.reg_no); }
+            if (prod.mfr) { q.set('registrant', prod.mfr); }
+            if (prod.di) { q.set('udi_di', prod.di); }
+        }
+        if (code) { q.set('udi', code); }
+        return '<a class="btn btn-sm btn-success ms-1 mt-1" href="' + REAGENT_NEW_URL + '?' + q.toString() +
+            '">＋ 新建这条试剂档案</a>';
+    }
     function selectReagentById(id) {
         categorySel.value = '';
         mfrSel.value = '';
@@ -318,9 +338,9 @@
                         }).join('') + '</div>';
                 }
                 const lead = prod
-                    ? '<i class="bi bi-info-circle text-warning"></i> 已识别该产品，但还没对应到本系统试剂档案，请手工选择一次（选定后系统会记住这个码）'
-                    : '<i class="bi bi-exclamation-triangle text-warning"></i> 这个产品标识不在本地 UDI 库（未导入发布文件或属老批次），请手工选择试剂';
-                showUdi(lead + (codeInfo ? '；' + codeInfo : '') + prodInfo + cand, 'warning');
+                    ? '<i class="bi bi-info-circle text-warning"></i> 已识别该产品，但本系统试剂档案里还没有它对得上的记录：可从下面选一条已有的，或者点「新建这条试剂档案」直接建档（名称/规格/注册证/厂家会自动填好，保存后回到本页自动重新识别）'
+                    : '<i class="bi bi-exclamation-triangle text-warning"></i> 这个产品标识不在本地 UDI 库（未导入发布文件或属老批次）。码内信息已解析，请手工选择已有试剂；若是新试剂，点「新建试剂档案」把它加进档案';
+                showUdi(lead + (codeInfo ? '；' + codeInfo : '') + prodInfo + cand + udiCreateLink(prod, code), 'warning');
             })
             .catch(function () { showUdi('识别请求失败，请检查服务是否正常', 'danger'); });
     }
@@ -420,5 +440,11 @@
         });
     });
     document.getElementById('udiCamModal').addEventListener('hidden.bs.modal', stopUdiCam);
+
+    // 从试剂档案「新建」返回时带回来的码：自动重新识别一次，省得再扫
+    const UDI_AUTO = {{ (udi_code or '')|tojson }};
+    if (UDI_AUTO) {
+        handleUdi(UDI_AUTO);
+    }
 </script>
 {% endblock %}
