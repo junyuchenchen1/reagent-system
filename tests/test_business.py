@@ -808,3 +808,23 @@ def test_udi_match_tied_scores_need_manual_pick(db_session, reagent):
     rid, cands = udi_service.match_reagents(prod)
     assert rid is None
     assert len(cands) >= 2
+
+
+def test_parse_dm_real_code_batch_starting_with_11():
+    """真实盒码：批号以 11 开头（114260321），码尾还带 "240130219004M" 噪音，DI 不能被带歪。"""
+    from app.services.udi_service import parse_dm
+
+    p = parse_dm("0106947145509262112607091727070910114260321 240130219004M")
+    assert p["di"] == "06947145509262"
+    assert p["batch_no"] == "114260321"
+    assert p["expire_date"].isoformat() == "2027-07-09"
+
+
+def test_parse_dm_with_gs1_symbol_prefix():
+    """]C1（FNC1 符号前缀）+ 无 GS 分隔的真实码。"""
+    from app.services.udi_service import parse_dm
+
+    p = parse_dm("]C10106947145509262112607091727070910114260321")
+    assert p["di"] == "06947145509262"
+    assert p["batch_no"] == "114260321"
+    assert p["expire_date"].isoformat() == "2027-07-09"

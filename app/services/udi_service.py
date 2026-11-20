@@ -21,6 +21,10 @@ _FIXED_AI = {"01": 14, "11": 6, "17": 6, "30": 8}
 _VAR_AI = ("10", "21", "240")
 _ALL_AI = tuple(_FIXED_AI) + _VAR_AI
 
+# 变长字段后面“下一个 AI 的可信起点”：01 后必须 14 位纯数字，17/11 后必须 6 位合法日期。
+# 不把 "21"/"240" 当起点：它们出现在批号内部（如 114260321 里的 21）的概率远高于真的下一个 AI。
+_AI_NEXT = re.compile(r"(01)(\d{14})|(17|11)(\d{6})|(30)(\d{8})")
+
 # 检验试剂关键字（导入发布文件时据此过滤，避免把几百万条耗材/设备都塞进本地库）
 IVD_KEYWORDS = ("试剂", "校准品", "质控品", "抗体", "染色液", "溶血剂",
                 "培养基", "血凝", "凝血", "检测试剂")
@@ -38,6 +42,23 @@ def _gs1_date(yymmdd: str):
         return None
 
 
+def _next_ai_start(code: str, i: int) -> int:
+    """变长字段（批号/序列号）后没有 GS 分隔符时，找下一个“可信的 AI 起点”。
+
+    不能只按 "11"/"17" 两个字判断：批号本身可能以 11 开头（如 114260321），
+    所以日期型 AI 必须连同 6 位一起校验成合法日期，01 必须后接 14 位纯数字。
+    """
+    for m in _AI_NEXT.finditer(code, i):
+        if m.group(1):
+            return m.start()
+        if m.group(3):
+            if _gs1_date(m.group(4)):
+                return m.start()
+            continue
+        return m.start()
+    return len(code)
+
+
 def parse_dm(raw: str) -> dict:
     """解析 GS1 DataMatrix 内容。
 
@@ -53,6 +74,7 @@ def parse_dm(raw: str) -> dict:
             .replace("\x1d", "|").replace("\u001d", "|")
             .replace("\r", "").replace("\n", ""))
     code = code.replace("(", "").replace(")", "")   # 人可读括号格式 (01)…
+    code = code.replace(" ", "|")                   # GS1 码内不会有空格，出现即当作分隔符
 
     if code.isdigit() and len(code) == 14:          # 只扫到 DI 本身
         return {"di": code}
@@ -73,7 +95,9 @@ def parse_dm(raw: str) -> dict:
             if not val:
                 continue
             if ai == "01":
-                result["di"] = val
+                # 只认真的 14 位产品标识：码尾噪音（如 "240130219004M" 里恰好出现的 01）不能覆盖
+                if val.isdigit() and len(val) == 14:
+                    result.setdefault("di", val)
             elif ai == "30":
                 result["qty"] = val.lstrip("0") or "0"
             else:
@@ -83,10 +107,7 @@ def parse_dm(raw: str) -> dict:
         else:                                       # 变长字段
             end = code.find("|", i)
             if end < 0:
-                end = n
-                m = re.search(r"01\d{14}|11\d{6}|17\d{6}", code[i:])
-                if m:
-                    end = i + m.start()
+                end = _next_ai_start(code, i)
             val = code[i:end].strip("|")
             i = end
             if ai == "10":
