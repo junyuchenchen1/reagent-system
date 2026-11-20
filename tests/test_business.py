@@ -769,3 +769,38 @@ def test_udi_import_accepts_directory(tmp_path, db_session):
     assert stats["files"] == 2
     assert stats["matched"] == 2
     assert UdiProduct.query.count() == 2
+
+
+def test_udi_match_reg_same_name_diff_gives_candidate_only(db_session, reagent):
+    """一个注册证常覆盖同系列多个产品：注册证一致但名称完全不同时只给候选，不自动选中。"""
+    from app.models.udi import UdiProduct
+    from app.services import udi_service
+
+    reagent.reg_no = "京大械备20180038号"
+    db_session.session.commit()
+
+    prod = UdiProduct(di="06970000000021", name="CD38检测试剂",
+                      mfr="北京同生时代生物技术有限公司",
+                      reg_no="京大械备20180038号")
+    rid, cands = udi_service.match_reagents(prod)
+    assert rid is None
+    assert cands and cands[0]["id"] == reagent.id
+    assert "请确认" in cands[0]["reason"]
+
+
+def test_udi_match_tied_scores_need_manual_pick(db_session, reagent):
+    """同名的两条试剂（高值/低值只差括号）分数并列时，不自动选中，交给人工点选。"""
+    from app.models.reagent import Reagent
+    from app.models.udi import UdiProduct
+    from app.services import udi_service
+
+    twin = Reagent(name="葡萄糖(GLU)测定试剂盒（低值）", spec="R1 20ml×2",
+                   pack_size=6, small_unit="瓶", unit="盒", min_stock=2,
+                   expire_warning_days=90, storage_condition="冷藏")
+    db_session.session.add(twin)
+    db_session.session.commit()
+
+    prod = UdiProduct(di="06970000000022", name="葡萄糖(GLU)测定试剂盒")
+    rid, cands = udi_service.match_reagents(prod)
+    assert rid is None
+    assert len(cands) >= 2

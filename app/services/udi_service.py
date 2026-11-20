@@ -147,19 +147,23 @@ def match_reagents(product, limit: int = 5):
         rreg = _norm(r.reg_no or "")
         rfull = _norm(r.name)
         score, reason = 0, ""
-        if preg and rreg and (preg == rreg or preg in rreg or rreg in preg):
-            score += 100
-            reason = "注册证编号一致"
+        reg_hit = bool(preg and rreg and (preg == rreg or preg in rreg or rreg in preg))
+        name_score = 0
         if pname and rname:
             if pname == rname:
-                score += 80
-                reason = reason or "产品名称一致"
+                name_score = 80
             elif len(pname) >= 4 and (pname in rname or rname in pname):
-                score += 45
-                reason = reason or "产品名称包含"
-            elif pname and pname in rfull:
-                score += 30
-                reason = reason or "名称相近"
+                name_score = 45
+            elif pname in rfull:
+                name_score = 30
+        if reg_hit:
+            # 一个注册证常覆盖同系列多个产品，名称对不上时只当线索，不能自动选定
+            score += 100 if name_score else 55
+            reason = "注册证编号一致" if name_score else "注册证一致但名称不同，请确认"
+        if name_score:
+            score += name_score
+            reason = reason or {80: "产品名称一致", 45: "产品名称包含",
+                                30: "名称相近"}[name_score]
         if pmfr and r.registrant and _norm(r.registrant) == pmfr:
             score += 20
             reason = reason or "生产企业一致"
@@ -170,7 +174,12 @@ def match_reagents(product, limit: int = 5):
 
     scored.sort(key=lambda x: (-x["score"], x["id"]))
     candidates = scored[:limit]
-    best = candidates[0] if candidates and candidates[0]["score"] >= 75 else None
+    best = None
+    if candidates:
+        # 只有“唯一最高分”才自动选中；并列最高（如高值/低值两条同名质控品）交给人工点选
+        top = candidates[0]["score"]
+        if top >= 75 and sum(1 for c in scored if c["score"] == top) == 1:
+            best = candidates[0]
     return (best["id"] if best else None), candidates
 
 
