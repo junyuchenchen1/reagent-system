@@ -752,6 +752,59 @@ def test_udi_import_filters_non_ivd(db_session, tmp_path):
     assert UdiProduct.query.first().di == DI
 
 
+def test_udi_import_keeps_liquid_reagents_and_drops_care_products(db_session, tmp_path):
+    """名称不带"试剂"的液类产品（稀释液/清洗液/保存液）要收；隐形眼镜护理液、鼻腔清洗液要挡掉。"""
+    import zipfile
+
+    from app.models.udi import UdiProduct
+    from udi_import import import_package
+
+    def dev(di, name):
+        return (f"<device><zxxsdycpbs>{di}</zxxsdycpbs><cpbsbmtxmc>GS1</cpbsbmtxmc>"
+                f"<cpmctymc>{name}</cpmctymc><ggxh>1L</ggxh>"
+                f"<ylqxzcrbarmc>某公司</ylqxzcrbarmc><cplb>耗材</cplb></device>")
+
+    xml = ('<?xml version="1.0" encoding="UTF-8"?><udid version="1.0"><devices>'
+           + dev("06970000000011", "尿液分析用稀释液 UF-CELLPACK")
+           + dev("06970000000012", "样本保存液")
+           + dev("06970000000013", "隐形眼镜护理液")
+           + dev("06970000000014", "医用鼻腔清洗液")
+           + "</devices></udid>")
+    zpath = tmp_path / "udi2.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("UDID_LIQ.xml", xml)
+
+    stats = import_package(zpath)
+    assert stats["scanned"] == 4
+    assert stats["matched"] == 2                  # 稀释液 + 保存液
+    assert UdiProduct.query.count() == 2
+    assert not UdiProduct.query.filter(UdiProduct.di.in_(
+        ["06970000000013", "06970000000014"])).first()
+
+
+def test_udi_import_force_di_bypasses_filter(db_session, tmp_path):
+    """关键词没覆盖到的产品，可以按 DI 强制补录（--di）。"""
+    import zipfile
+
+    from app.models.udi import UdiProduct
+    from udi_import import import_package
+
+    di = "06970000000021"
+    xml = (f'<?xml version="1.0" encoding="UTF-8"?><udid version="1.0"><devices>'
+           f'<device><zxxsdycpbs>{di}</zxxsdycpbs><cpmctymc>一次性使用无菌注射器</cpmctymc>'
+           f'<zzbhhzbapzbh>国械注准20193141908</zzbhhzbapzbh><cplb>耗材</cplb></device>'
+           f'</devices></udid>')
+    zpath = tmp_path / "udi3.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("UDID_FORCE.xml", xml)
+
+    stats = import_package(zpath, force_di={di})
+    assert stats["forced"] == 1
+    assert stats["written"] == 1
+    obj = db_session.session.get(UdiProduct, di)
+    assert obj is not None and obj.name == "一次性使用无菌注射器"
+
+
 def test_stock_in_binds_udi_to_reagent(client, db_session, users, reagent):
     """提交入库时保存 udi_di，并把 DI 与所选试剂绑定；下次扫同款自动选中。"""
     from app.models.stock import StockIn

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.extensions import db                       # noqa: E402
 from app.models.udi import UdiProduct               # noqa: E402
-from app.services.udi_service import IVD_KEYWORDS   # noqa: E402
+from app.services.udi_service import IVD_EXCLUDE, IVD_KEYWORDS   # noqa: E402
 
 # XML 字段（药监局发布文件的拼音缩写字段名）
 F_DI = "zxxsdycpbs"
@@ -76,6 +76,8 @@ def _clean_reg(value: str) -> str:
 def _is_ivd(name: str, reg_no: str, keywords=IVD_KEYWORDS) -> bool:
     if not name:
         return False
+    if any(x in name for x in IVD_EXCLUDE):
+        return False
     return any(k in name for k in keywords) or "试剂" in (reg_no or "")
 
 
@@ -100,13 +102,15 @@ def _iter_sources(path: Path):
 
 
 def import_package(path, only_ivd: bool = True, dry_run: bool = False,
-                   limit: int = 0, source: str = "") -> dict:
+                   limit: int = 0, source: str = "", force_di=None) -> dict:
     path = Path(path)
     if not path.exists():
         raise SystemExit(f"文件不存在：{path}")
 
+    force_di = {str(d).strip() for d in (force_di or []) if str(d).strip()}
+    found_forced = set()
     stats = {"scanned": 0, "matched": 0, "written": 0, "no_di": 0,
-             "updated": 0, "created": 0, "files": 0, "skipped": 0}
+             "updated": 0, "created": 0, "files": 0, "skipped": 0, "forced": 0}
     seen = set()
     pending = 0
     stop = False
@@ -126,7 +130,8 @@ def import_package(path, only_ivd: bool = True, dry_run: bool = False,
                 di = _field(elem, F_DI)
                 name = _field(elem, F_NAME)
                 reg = _clean_reg(_field(elem, F_REG))
-                if (not di) or (only_ivd and not _is_ivd(name, reg)):
+                forced = bool(di) and di in force_di
+                if (not di) or (only_ivd and not forced and not _is_ivd(name, reg)):
                     if not di:
                         stats["no_di"] += 1
                     elem.clear()
@@ -136,6 +141,10 @@ def import_package(path, only_ivd: bool = True, dry_run: bool = False,
                         stop = True
                         break
                     continue
+
+                if forced:
+                    stats["forced"] += 1
+                    found_forced.add(di)
 
                 stats["matched"] += 1
                 if not dry_run and di not in seen:
@@ -165,6 +174,10 @@ def import_package(path, only_ivd: bool = True, dry_run: bool = False,
                 if limit and stats["matched"] >= limit:
                     stop = True
                     break
+                # 定向补录：指定的 DI 全找到了就收工，不用把整个全量包扫完
+                if force_di and found_forced >= force_di:
+                    stop = True
+                    break
         except ET.ParseError as exc:
             stats["skipped"] += 1
             print(f"[UDI] 跳过解析失败的文件：{origin}（{exc}）")
@@ -189,8 +202,11 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="只统计不写库")
     parser.add_argument("--limit", type=int, default=0, help="最多导入 N 条")
     parser.add_argument("--source", default="", help="来源备注（默认用文件名）")
+    parser.add_argument("--di", default="",
+                        help="定向补录：指定 DI（逗号分隔），不管名称关键词一律入库；找齐即停止扫描")
     args = parser.parse_args()
 
+    force = {d.strip() for d in args.di.replace("，", ",").split(",") if d.strip()}
     from app import create_app
     app = create_app()
     with app.app_context():
@@ -199,9 +215,11 @@ def main() -> None:
             print(f"[UDI] 导入前已有 {before} 条")
         stats = import_package(args.file, only_ivd=not args.all,
                                dry_run=args.dry_run, limit=args.limit,
-                               source=args.source)
+                               source=args.source, force_di=force)
         print(f"[UDI] 扫描 {stats['scanned']} 条（{stats['files']} 个文件），"
               f"命中检验试剂 {stats['matched']} 条")
+        if stats["forced"]:
+            print(f"[UDI] 其中按 --di 强制补录 {stats['forced']} 条")
         if stats["skipped"]:
             print(f"[UDI] 跳过 {stats['skipped']} 个无法解析的文件（其余文件已正常导入）")
         if args.dry_run:
