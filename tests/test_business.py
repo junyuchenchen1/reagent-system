@@ -657,9 +657,9 @@ def test_in_add_page_guides_to_create_reagent(client):
     """档案里没有该试剂时，结果卡片给出「新建这条试剂档案」入口，并把码带过去自动重扫。"""
     html = client.get("/stock-in/add").get_data(as_text=True)
     assert "新建这条试剂档案" in html
-    assert "/basic/reagent?new=1" in html or "udiCreateLink" in html
-    # 链接拼进 innerHTML 前必须把 & 转义，否则 "&reg_no=" 会被当成实体 ®
-    assert "replace(/&/g, '&amp;')" in html
+    # 多参数 URL 不能直接拼进 href（"&reg_no=" 会被当成实体 ®），改为 data-* + URL 对象
+    assert "udi-new-reagent" in html
+    assert "searchParams.set(pair[1], v)" in html
     assert 'const UDI_AUTO = "";' in html          # 未带 udi 参数时不自动重扫
 
     html2 = client.get(f"/stock-in/add?udi={DI}").get_data(as_text=True)
@@ -687,6 +687,18 @@ def test_reagent_list_unescapes_mangled_spec(client):
     seg = html.split("const PREFILL")[-1][:300]
     assert '"spec": "100测试/盒"' in seg
     assert '"reg_no": "国械注准20183400568"' in seg
+    assert "®" not in seg
+
+
+def test_reagent_list_cleans_entity_leftover_in_spec(client):
+    """链接二次转义后规格里会残留 "&#32;\\" 之类垃圾，预填前必须清掉。"""
+    html = client.get(
+        "/basic/reagent?new=1&name=HIV试剂盒"
+        "&spec=100测试/盒%C2%AE_no=%E5%9B%B3%E5%AE%B6&#32;"
+    ).get_data(as_text=True)
+    seg = html.split("const PREFILL")[-1][:300]
+    assert '"spec": "100测试/盒"' in seg
+    assert "&#32;" not in seg
     assert "®" not in seg
 
 

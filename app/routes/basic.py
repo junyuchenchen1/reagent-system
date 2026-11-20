@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """基础数据：试剂分类、供应商、试剂档案"""
 import os
+import re
 import uuid
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
@@ -49,12 +50,21 @@ def _udi_prefill() -> dict:
                 elif key == "registrant" and not registrant:
                     registrant = val
 
+    def _tidy(text: str, limit: int) -> str:
+        """清掉实体残留与误吞的分隔符，避免把 "100测试/盒®_no=..." 这类脏值预填进档案。"""
+        text = re.sub(r"&#\d+;?", " ", text or "").replace("&amp;", "&").strip()
+        for mark in ("&reg", "_no=", "istrant=", "udi_di=", "_di="):
+            idx = text.find(mark)
+            if idx > 0:
+                text = text[:idx].strip()
+        return text[:limit]
+
     return {
         "open": bool(request.args.get("new")),
-        "name": (request.args.get("name") or "").strip()[:200],
-        "spec": spec,
-        "reg_no": reg_no,
-        "registrant": registrant,
+        "name": _tidy(request.args.get("name") or "", 200),
+        "spec": _tidy(spec, 255),
+        "reg_no": _tidy(reg_no, 200),
+        "registrant": _tidy(registrant, 200),
         "udi_di": (request.args.get("udi_di") or "").strip()[:32],
         "udi": (request.args.get("udi") or "").strip()[:512],
     }

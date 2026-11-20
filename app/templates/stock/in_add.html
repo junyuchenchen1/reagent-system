@@ -268,25 +268,22 @@
     }
     const REAGENT_NEW_URL = '{{ url_for("basic.reagent_list") }}';
     const CAN_CREATE_REAGENT = {{ 'true' if can_create_reagent else 'false' }};
-    // 扫码信息（名称/规格/注册证/厂家）带到试剂档案新增弹窗，保存后自动回到本页并重新识别
+    // 扫码信息（名称/规格/注册证/厂家）带到试剂档案新增弹窗，保存后自动回到本页并重新识别。
+    // 注意：不要把带多个参数的 URL 直接拼进 href —— innerHTML 解析时 "&reg_no=" 的 "&reg"
+    // 会被当成 HTML 实体 ®，分隔符被吃掉，reg_no 会并进 spec。这里只放 data-*，点击时用
+    // URL 对象拼参数，绕开实体解析。
     function udiCreateLink(prod, code) {
         if (!CAN_CREATE_REAGENT) {
             return '<div class="mt-1 small">当前账号没有建档权限，请让组长在「基础数据 → 试剂档案」里先建这一条。</div>';
         }
-        const q = new URLSearchParams();
-        q.set('new', '1');
-        if (prod) {
-            if (prod.name) { q.set('name', prod.name); }
-            if (prod.spec) { q.set('spec', prod.spec); }
-            if (prod.reg_no) { q.set('reg_no', prod.reg_no); }
-            if (prod.mfr) { q.set('registrant', prod.mfr); }
-            if (prod.di) { q.set('udi_di', prod.di); }
+        const p = prod || {};
+        function attr(name, val) {
+            return val ? ' ' + name + '="' + udiEscape(val) + '"' : '';
         }
-        if (code) { q.set('udi', code); }
-        // 这段 HTML 会被 innerHTML 解析："&reg_no=" 里的 "&reg" 会被当成实体 ®，
-        // 参数分隔符就丢了（reg_no 被并进 spec）。所以 & 必须写成 &amp;。
-        return '<a class="btn btn-sm btn-success ms-1 mt-1" href="' + REAGENT_NEW_URL + '?' +
-            q.toString().replace(/&/g, '&amp;') + '">＋ 新建这条试剂档案</a>';
+        return '<button type="button" class="btn btn-sm btn-success ms-1 mt-1 udi-new-reagent"' +
+            attr('data-name', p.name) + attr('data-spec', p.spec) + attr('data-reg', p.reg_no) +
+            attr('data-mfr', p.mfr) + attr('data-di', p.di) + attr('data-code', code) +
+            '>＋ 新建这条试剂档案</button>';
     }
     function selectReagentById(id) {
         categorySel.value = '';
@@ -354,6 +351,19 @@
         }
     });
     udiResult.addEventListener('click', function (e) {
+        const newBtn = e.target.closest('.udi-new-reagent');
+        if (newBtn) {
+            const u = new URL(REAGENT_NEW_URL, window.location.origin);
+            u.searchParams.set('new', '1');
+            [['data-name', 'name'], ['data-spec', 'spec'], ['data-reg', 'reg_no'],
+             ['data-mfr', 'registrant'], ['data-di', 'udi_di'], ['data-code', 'udi']]
+                .forEach(function (pair) {
+                    const v = newBtn.getAttribute(pair[0]);
+                    if (v) { u.searchParams.set(pair[1], v); }
+                });
+            window.location.href = u.toString();
+            return;
+        }
         const btn = e.target.closest('.udi-cand');
         if (!btn) { return; }
         selectReagentById(btn.dataset.id);
