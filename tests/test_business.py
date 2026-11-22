@@ -995,9 +995,12 @@ def test_in_add_page_has_serial_and_produce_fields(client):
     toggle_line = [ln for ln in html.splitlines() if 'id="serialToggle"' in ln][0]
     assert "checked" not in toggle_line
     assert "wantSerial()" in html
-    # 布局：左侧扫码卡片 + 右侧纵向单列表单（与出库页一致）
+    # 布局：左 4 列扫码卡片 + 待入库清单，右 8 列表单
     assert 'class="col-lg-4' in html and 'class="col-lg-8' in html
-    assert "position:sticky" in html
+    assert 'id="pendingList"' in html and "一次提交" in html
+    # 提交按钮只在卡片标题栏，页面底部不再重复一枚
+    assert 'class="btn btn-primary btn-sm js-submit' in html
+    assert 'btn btn-primary js-submit" type="submit"><i class="bi bi-check-lg"></i> 提交入库' not in html
 
 
 def test_stock_in_saves_serial_and_produce_date(client, db_session, users, reagent):
@@ -1088,3 +1091,98 @@ def test_stock_in_rejects_produce_date_after_expire(client, db_session, users, r
         "produce_date": "2027-01-02", "csrf_token": "test-token",
     }, follow_redirects=True)
     assert "生产日期不能晚于有效期" in resp.get_data(as_text=True)
+
+
+def test_batch_stock_in_creates_multiple_and_labels(client, db_session, users, reagent):
+    """待入库清单一次提交：多试剂一起落库、直接生成条码，并跳到批量标签页。"""
+    from app.models.stock import ReagentPack
+
+    payload = {
+        "items": [
+            {"reagent_id": reagent.id, "batch_no": "B2601", "expire_date": "2028-06-30",
+             "quantity": 2, "unit_price": 12.5, "serial_no": "SN0001"},
+            {"reagent_id": reagent.id, "batch_no": "B2602", "expire_date": "2028-07-31",
+             "quantity": 1, "produce_date": "2026-07-01"},
+        ],
+        "verifier_id": users["mgr"].id,
+        "storage_location": "2号冰箱",
+        "accept_status": "合格",
+    }
+    r = client.post("/stock-in/add-batch", json=payload,
+                    headers={"X-CSRF-Token": "test-token"})
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["ok"] is True
+    assert len(d["sids"]) == 2
+    assert d["labels_url"].startswith("/stock-in/labels-batch?sids=")
+    packs = ReagentPack.query.filter(ReagentPack.stock_in_id.in_(d["sids"])).count()
+    assert packs == 3                      # 2 盒 + 1 盒
+
+    html = client.get(d["labels_url"]).get_data(as_text=True)
+    assert "批量入库条码标签" in html
+    assert "3 枚" in html
+
+
+def test_batch_stock_in_rejects_bad_rows(client, db_session, users, reagent):
+    """整批校验：缺验收人、重复序列号都整批拒绝，一条都不落库。"""
+    from app.models.stock import StockIn
+
+    n0 = StockIn.query.count()
+
+    # 缺验收人
+    r = client.post("/stock-in/add-batch", json={
+        "items": [{"reagent_id": reagent.id, "batch_no": "B1",
+                   "expire_date": "2028-06-30", "quantity": 1}],
+    }, headers={"X-CSRF-Token": "test-token"})
+    assert r.status_code == 400
+    assert any("验收人" in e for e in r.get_json()["errors"])
+    assert StockIn.query.count() == n0
+
+    # 先单条入库一个带序列号的，再批量提交同一序列号 → 拒绝
+    client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "B9", "expire_date": "2028-06-30",
+        "quantity": 1, "verifier_id": users["mgr"].id,
+        "serial_no": "SN9", "csrf_token": "test-token",
+    })
+    n1 = StockIn.query.count()
+    r = client.post("/stock-in/add-batch", json={
+        "items": [{"reagent_id": reagent.id, "batch_no": "B9", "expire_date": "2028-06-30",
+                   "quantity": 1, "serial_no": "SN9"}],
+        "verifier_id": users["mgr"].id,
+    }, headers={"X-CSRF-Token": "test-token"})
+    assert r.status_code == 400
+    assert any("重复入库" in e for e in r.get_json()["errors"])
+    assert StockIn.query.count() == n1
+
+
+def test_in_export_and_detail_include_serial(client, db_session, users, reagent):
+    """入库单详情页与导出的 xlsx 都要带序列号（和生产日期）。"""
+    import io
+    from openpyxl import load_workbook
+    from app.models.stock import StockIn
+
+    client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "W041606007",
+        "expire_date": "2028-06-24", "quantity": 1,
+        "verifier_id": users["mgr"].id,
+        "serial_no": "31012305014743", "produce_date": "2026-06-24",
+        "csrf_token": "test-token",
+    })
+    si = StockIn.query.filter_by(serial_no="31012305014743").first()
+    assert si is not None
+
+    detail = client.get("/stock-in/%d" % si.id).get_data(as_text=True)
+    assert "序列号" in detail
+    assert "31012305014743" in detail
+    assert "2026-06-24" in detail
+
+    resp = client.get("/stock-in/export")
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.data))
+    ws = wb.active
+    headers = [c.value for c in ws[1]]
+    assert "序列号(UDI 21)" in headers
+    assert "生产日期" in headers
+    col = headers.index("序列号(UDI 21)")
+    values = [ws.cell(row=i, column=col + 1).value for i in range(2, ws.max_row + 1)]
+    assert "31012305014743" in values

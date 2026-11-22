@@ -20,6 +20,8 @@
                 <th style="width:150px;background:#F7F8FA;">所属分类</th><td>{{ si.reagent.category.name if si.reagent.category else '-' }}</td></tr>
             <tr><th style="background:#F7F8FA;">规格型号</th><td>{{ si.reagent.spec or '-' }}</td>
                 <th style="background:#F7F8FA;">批号</th><td>{{ si.batch_no }}</td></tr>
+            <tr><th style="background:#F7F8FA;">序列号</th><td><span class="font-monospace">{{ si.serial_no or '-' }}</span></td>
+                <th style="background:#F7F8FA;">生产日期</th><td>{{ si.produce_date.strftime('%Y-%m-%d') if si.produce_date else '-' }}</td></tr>
             <tr><th style="background:#F7F8FA;">有效期至</th><td>{{ si.expire_date.strftime('%Y-%m-%d') }}</td>
                 <th style="background:#F7F8FA;">包装规格</th><td>1 {{ si.reagent.unit }} = {{ si.reagent.pack_size or 1 }} {{ si.reagent.small_unit }}</td></tr>
             <tr><th style="background:#F7F8FA;">入库数量</th><td class="fw-bold">{{ si.quantity }} {{ si.reagent.unit }}</td>

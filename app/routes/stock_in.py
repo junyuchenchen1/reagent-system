@@ -164,6 +164,145 @@ def in_add():
                            can_create_reagent=current_user.is_manager)
 
 
+@stock_in_bp.route("/add-batch", methods=["POST"])
+@login_required
+def in_add_batch():
+    """批量入库：一次提交前端「待入库清单」里的多条试剂。
+
+    共享字段（验收人/供应商/存放位置/接收状态）由右侧表单提供，每条试剂自带
+    reagent_id / batch_no / expire_date / quantity / 单价（可空）/ serial_no（勾选序列号时）。
+    校验全部通过才一起落库；有任何一条不合格就整批不提交，返回逐条错误。
+    """
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items") or []
+    verifier_id = payload.get("verifier_id") or None
+    supplier_id = payload.get("supplier_id") or None
+    storage_location = (payload.get("storage_location") or "").strip()
+    accept_status = payload.get("accept_status") or "合格"
+    remark = (payload.get("remark") or "").strip()
+
+    errors = []
+    if not items:
+        return jsonify({"ok": False, "errors": ["待入库清单是空的"]}), 400
+    if not verifier_id:
+        errors.append("请先选择验收人（双人验收）")
+    if len(items) > 200:
+        return jsonify({"ok": False, "errors": ["单次最多提交 200 条"]}), 400
+
+    prepared = []
+    seen_serial = {}
+    for idx, it in enumerate(items, start=1):
+        reagent_id = it.get("reagent_id")
+        batch_no = (it.get("batch_no") or "").strip()
+        serial_no = (it.get("serial_no") or "").strip()[:64]
+        expire_date = _parse_date(it.get("expire_date") or "")
+        produce_date = _parse_date(it.get("produce_date") or "")
+        try:
+            quantity = int(it.get("quantity") or 0)
+        except (TypeError, ValueError):
+            quantity = 0
+        try:
+            unit_price = float(it.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            unit_price = 0.0
+        reagent = db.session.get(Reagent, int(reagent_id)) if reagent_id else None
+        label = f"第 {idx} 条"
+        if reagent is None:
+            errors.append(f"{label}：没选到试剂")
+            continue
+        if not batch_no:
+            errors.append(f"{label}（{reagent.name}）：缺批号")
+            continue
+        if expire_date is None:
+            errors.append(f"{label}（{reagent.name}）：有效期没填或格式不对")
+            continue
+        if produce_date and produce_date > expire_date:
+            errors.append(f"{label}（{reagent.name}）：生产日期晚于有效期")
+            continue
+        if expire_date < date.today():
+            errors.append(f"{label}（{reagent.name}）：批号 {batch_no} 已过期，禁止入库")
+            continue
+        if quantity <= 0:
+            errors.append(f"{label}（{reagent.name}）：入库数量必须大于 0")
+            continue
+        if serial_no:
+            if serial_no in seen_serial:
+                errors.append(f"{label}（{reagent.name}）：序列号 {serial_no} "
+                              f"在上面的第 {seen_serial[serial_no]} 条里重复了")
+                continue
+            dup = _serial_used(serial_no)
+            if dup:
+                errors.append(f"{label}（{reagent.name}）：序列号 {serial_no} 已在入库单 "
+                              f"{dup.order_no} 登记过，不能重复入库")
+                continue
+            seen_serial[serial_no] = idx
+        prepared.append({
+            "reagent": reagent, "batch_no": batch_no, "serial_no": serial_no,
+            "expire_date": expire_date, "produce_date": produce_date,
+            "quantity": quantity, "unit_price": unit_price,
+            "udi_di": (it.get("udi_di") or "").strip()[:32],
+        })
+
+    if errors:
+        return jsonify({"ok": False, "errors": errors}), 400
+
+    sids = []
+    try:
+        for p in prepared:
+            data = {
+                "reagent_id": p["reagent"].id, "batch_no": p["batch_no"],
+                "expire_date": p["expire_date"], "quantity": p["quantity"],
+                "unit_price": p["unit_price"], "supplier_id": supplier_id,
+                "storage_location": storage_location, "remark": remark,
+                "verifier_id": int(verifier_id), "accept_status": accept_status,
+                "udi_di": p["udi_di"], "serial_no": p["serial_no"],
+                "produce_date": p["produce_date"],
+            }
+            si = stock_service.create_stock_in(data, current_user)
+            if p["udi_di"]:
+                udi_service.bind_reagent(p["udi_di"], p["reagent"].id)
+            if current_user.is_manager:
+                stock_service.confirm_stock_in(si, current_user)
+            sids.append(si.id)
+    except Exception:
+        current_app.logger.exception("[批量入库] 落库失败")
+        return jsonify({"ok": False,
+                        "errors": ["保存过程中出错，已写入 logs/error.log。"
+                                   "可到入库记录页核对哪些已经生成。"]}), 500
+
+    total_boxes = sum(p["quantity"] for p in prepared)
+    log_operation("入库管理",
+                  f"批量入库 {len(sids)} 条、共 {total_boxes} 盒（扫码清单一次提交）")
+    if current_user.is_manager:
+        return jsonify({"ok": True, "sids": sids,
+                        "labels_url": url_for("stock_in.labels_batch",
+                                              sids=",".join(str(s) for s in sids))})
+    return jsonify({"ok": True, "sids": sids, "labels_url": None,
+                    "message": "批量入库申请已提交，等待管理员审核"})
+
+
+@stock_in_bp.route("/labels-batch")
+@login_required
+def labels_batch():
+    """批量条码标签：一次打印多张入库单的全部条码（批量入库后直接跳到这）。"""
+    raw = request.args.get("sids", "")
+    sids = [int(x) for x in raw.split(",") if x.strip().isdigit()][:50]
+    batches = []
+    for sid in sids:
+        si = db.session.get(StockIn, sid)
+        if not si:
+            continue
+        packs = ReagentPack.query.filter_by(stock_in_id=sid).order_by(
+            ReagentPack.barcode).all()
+        if packs:
+            batches.append((si, packs))
+    if not batches:
+        flash("没有可打印的条码（入库单不存在，或还在等审核）", "warning")
+        return redirect(url_for("stock_in.in_list"))
+    total = sum(len(p) for _, p in batches)
+    return render_template("stock/labels_batch.html", batches=batches, total=total)
+
+
 @stock_in_bp.route("/udi", methods=["GET"])
 @login_required
 def udi_scan():
@@ -311,6 +450,8 @@ def in_export():
             (si.reagent.registrant or "") if si.reagent else "",
             (si.reagent.spec or "") if si.reagent else "",
             si.batch_no or "",
+            si.serial_no or "",
+            si.produce_date.strftime("%Y-%m-%d") if si.produce_date else "",
             si.expire_date.strftime("%Y-%m-%d") if si.expire_date else "",
             si.quantity,
             (si.reagent.unit or "盒") if si.reagent else "盒",
@@ -326,7 +467,8 @@ def in_export():
     try:
         path = export_excel(
             "入库记录",
-            ["入库单号", "试剂名称", "生产企业", "规格", "批号", "有效期", "数量", "单位", "单价(元)", "金额",
+            ["入库单号", "试剂名称", "生产企业", "规格", "批号", "序列号(UDI 21)", "生产日期", "有效期",
+             "数量", "单位", "单价(元)", "金额",
              "供应商", "接收状态", "状态", "入库人", "验收人", "登记时间"],
             rows, filename)
     except Exception:
