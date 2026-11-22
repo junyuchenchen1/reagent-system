@@ -90,6 +90,9 @@ def _split_batch_serial(seg: str):
     只在"看起来确实是 21"时才切，避免把批号内部的 21 误当成 AI：
     - 切点前批号 4~20 位；
     - 21 之后 8~20 位字母数字，一直到码尾；
+    - 切出来的"序列号"里不能再藏着可信 AI（11/17/01）。真实 HIV 盒码批号
+      2510032 后面紧跟 (11)251009，批号末位的 2 和 "11" 的第一个 1 凑成了
+      "21"，会把 125100917271009 整段当成序列号，连生产/失效日期一起吞掉；
     - 有多个候选时取最靠后的一个（真 21 通常在批号和它的值之间，批号里的 21 更靠前）。
     返回 (批号, 序列号或 None)。
     """
@@ -99,8 +102,11 @@ def _split_batch_serial(seg: str):
     for m in re.finditer(r"21", seg):
         j = m.start()
         tail = seg[j + 2:]
-        if 4 <= j <= 20 and re.fullmatch(r"[0-9A-Za-z]{8,20}", tail or ""):
-            best = (seg[:j], tail)
+        if not (4 <= j <= 20 and re.fullmatch(r"[0-9A-Za-z]{8,20}", tail or "")):
+            continue
+        if _next_ai_start(tail, 0) < len(tail):
+            continue                            # 序列号里不该再出现 AI
+        best = (seg[:j], tail)
     if best:
         return best
     return seg, None

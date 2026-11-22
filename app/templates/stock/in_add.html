@@ -28,8 +28,8 @@
                 <div class="form-check mt-3 p-2 rounded" style="background:var(--primary-light);">
                     <input class="form-check-input ms-0 me-2" type="checkbox" id="serialToggle">
                     <label class="form-check-label small" for="serialToggle">
-                        <b>识别序列号（21）</b>
-                        <span class="d-block text-muted mt-1">默认关闭：按批号整批入库不用勾，序列号既不填也不保存；勾上才会填进右侧「序列号」框。</span>
+                        <b>按序列号管理（识别 21）</b>
+                        <span class="d-block text-muted mt-1">默认关闭：按批号整批入库不用勾，序列号既不填也不保存；勾上才会填进右侧「序列号」框、查重并入库。码里本身没有 (21) 的试剂（如 HIV）照常入库，序列号显示为 —。</span>
                     </label>
                 </div>
 
@@ -388,12 +388,13 @@
         pendingSubmit.disabled = false;
         pendingSubmit.innerHTML = '<i class="bi bi-check2-all"></i> 一次提交 ' + n + ' 条入库';
         pendingList.innerHTML = pending.map(function (it, i) {
+            const showSerial = wantSerial();
             return '<div class="border rounded px-2 py-1" data-i="' + i + '">' +
                 '<div class="d-flex align-items-start gap-1">' +
                 '<div class="small" style="min-width:0;">' +
                 '<b>' + udiEscape(it.name) + '</b>' +
                 '<div class="text-muted">批号 ' + udiEscape(it.batch_no) + ' ｜ 效期 ' + udiEscape(it.expire_date) +
-                (it.serial_no ? ' ｜ 序列号 ' + udiEscape(it.serial_no) : '') + '</div>' +
+                (showSerial ? ' ｜ 序列号 ' + (it.serial_no ? udiEscape(it.serial_no) : '—') : '') + '</div>' +
                 '</div>' +
                 '<button type="button" class="btn btn-link btn-sm text-danger ms-auto p-0 px-1 js-del" title="删掉这条">&times;</button>' +
                 '</div>' +
@@ -547,8 +548,8 @@
                     serialInput.value = '';
                     clearDupWarn();
                     if (wantSerial() && !p.serial) {
-                        // 勾了却读不到，必须明确说出来，不能静默留空（会被当成“没识别到”）
-                        parts.push('<span class="text-danger">这串码里没有 (21) 序列号段</span>');
+                        // 勾了但码里确实没有 21：标明“—”，仍按批号正常入库，不当作识别失败
+                        parts.push('序列号 <b>—</b><span class="text-muted">（这串码没有 (21) 段）</span>');
                     }
                 }
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }

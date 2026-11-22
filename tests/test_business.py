@@ -1003,6 +1003,23 @@ def test_parse_dm_batch_with_30_and_01_like_digits_stays_intact():
     assert p["expire_date"].isoformat() == "2028-03-20"
 
 
+def test_parse_dm_no_serial_with_11_right_after_batch():
+    """真实 HIV 盒码没有 (21) 序列号，批号末尾的 2 和 (11) 的 1 不能凑成假 21。
+
+    码：(01)06936498602812(10)2510032(11)251009(17)271009
+    —— 批号 2510032、生产 2025-10-09、失效 2027-10-09，没有序列号。
+    旧实现把 125100917271009 整段（含 17 日期）当成序列号，批号还被截成 251003。
+    """
+    from app.services.udi_service import parse_dm
+
+    p = parse_dm("01069364986028121025100321125100917271009")
+    assert p["di"] == "06936498602812"
+    assert p["batch_no"] == "2510032"
+    assert "serial" not in p
+    assert p["produce_date"].isoformat() == "2025-10-09"
+    assert p["expire_date"].isoformat() == "2027-10-09"
+
+
 def test_in_add_page_has_serial_and_produce_fields(client):
     """入库页要有序列号、生产日期两个非必填框；批号、有效期仍是必填。"""
     html = client.get("/stock-in/add").get_data(as_text=True)
