@@ -995,6 +995,9 @@ def test_in_add_page_has_serial_and_produce_fields(client):
     toggle_line = [ln for ln in html.splitlines() if 'id="serialToggle"' in ln][0]
     assert "checked" not in toggle_line
     assert "wantSerial()" in html
+    # 布局：左侧扫码卡片 + 右侧纵向单列表单（与出库页一致）
+    assert 'class="col-lg-4' in html and 'class="col-lg-8' in html
+    assert "position:sticky" in html
 
 
 def test_stock_in_saves_serial_and_produce_date(client, db_session, users, reagent):
