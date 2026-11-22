@@ -984,6 +984,25 @@ def test_parse_dm_batch_number_without_serial_stays_intact():
     assert "serial" not in p
 
 
+def test_parse_dm_batch_with_30_and_01_like_digits_stays_intact():
+    """真实梅毒盒码：批号 W034603011 里的 "30+8位数字""01+14位数字" 不能当成下一个 AI。
+
+    码：DI 06933289805346 / 生产 2026-03-20 / 失效 2028-03-20 /
+    批号 W034603011 / 序列号 31012500005511。
+    旧实现会把批号截成 W03460、把后面的 11213101 当成数量，序列号也丢。
+    """
+    from app.services.udi_service import parse_dm
+
+    code = ("0106933289805346112603201728032010W0346030112131012500005511")
+    p = parse_dm(code)
+    assert p["di"] == "06933289805346"
+    assert p["batch_no"] == "W034603011"
+    assert p["serial"] == "31012500005511"
+    assert "qty" not in p
+    assert p["produce_date"].isoformat() == "2026-03-20"
+    assert p["expire_date"].isoformat() == "2028-03-20"
+
+
 def test_in_add_page_has_serial_and_produce_fields(client):
     """入库页要有序列号、生产日期两个非必填框；批号、有效期仍是必填。"""
     html = client.get("/stock-in/add").get_data(as_text=True)

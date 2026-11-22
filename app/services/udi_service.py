@@ -24,7 +24,9 @@ _ALL_AI = tuple(_FIXED_AI) + _VAR_AI
 # 变长字段后面“下一个 AI 的可信起点”：01 后必须 14 位纯数字，17/11 后必须 6 位合法日期。
 # 不在这里认 "21"/"240"（批号内部像 114260321 里的 21 太常见）；
 # 批号末尾的 (21) 序列号由 _split_batch_serial 单独、保守地切开。
-_AI_NEXT = re.compile(r"(01)(\d{14})|(17|11)(\d{6})|(30)(\d{8})")
+# 也不在这里认 "30"：批号里像 W03460301121310125… 这种串，"30" 后面正好跟 8 位数字
+# 就会被误当成数量（真实遇到过：批号 W034603011 被截成 W03460）。30 只认“到码尾”的写法。
+_AI_NEXT = re.compile(r"(01)(\d{14})|(17|11)(\d{6})")
 
 # 检验试剂关键字（导入发布文件时据此过滤，避免把几百万条耗材/设备都塞进本地库）
 IVD_KEYWORDS = ("试剂", "校准品", "质控品", "抗体", "染色液", "溶血剂",
@@ -58,16 +60,28 @@ def _next_ai_start(code: str, i: int) -> int:
 
     不能只按 "11"/"17" 两个字判断：批号本身可能以 11 开头（如 114260321），
     所以日期型 AI 必须连同 6 位一起校验成合法日期，01 必须后接 14 位纯数字。
+    AI 30（数量）之后本身就是 8 位数字，批号里也常有 "30…"，所以只认
+    “30 + 8 位数字正好到码尾”的写法，避免把批号截断。
     """
+    strong = len(code)
     for m in _AI_NEXT.finditer(code, i):
         if m.group(1):
-            return m.start()
+            strong = m.start()
+            break
         if m.group(3):
             if _gs1_date(m.group(4)):
-                return m.start()
+                strong = m.start()
+                break
             continue
-        return m.start()
-    return len(code)
+        strong = m.start()
+        break
+    tail30 = None
+    m30 = re.search(r"30(\d{8})$", code[i:])
+    if m30:
+        tail30 = i + m30.start()
+    if tail30 is not None:
+        return min(strong, tail30)
+    return strong
 
 
 def _split_batch_serial(seg: str):
@@ -140,6 +154,17 @@ def parse_dm(raw: str) -> dict:
         else:                                       # 变长字段
             end = code.find("|", i)
             if end < 0:
+                if ai == "10":
+                    # 无 GS 分隔符的批号：先按“末尾 (21) 序列号”整体切。
+                    # 检验试剂盒码几乎固定是 10批号 21序列号 到码尾，这么切比
+                    # 逐个猜下一个 AI 稳得多——批号串里常出现 01/11/30 这类数字
+                    # （如 W0346030112131… 里 “01+14位数字” 会被误认成 GTIN）。
+                    head, serial = _split_batch_serial(code[i:])
+                    if serial:
+                        result["batch_no"] = head
+                        result.setdefault("serial", serial)
+                        i = n
+                        continue
                 end = _next_ai_start(code, i)
             val = code[i:end].strip("|")
             i = end

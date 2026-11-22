@@ -546,13 +546,18 @@
                     // 未勾选识别序列号（按批入库），或码里没有 21：不登记序列号
                     serialInput.value = '';
                     clearDupWarn();
+                    if (wantSerial() && !p.serial) {
+                        // 勾了却读不到，必须明确说出来，不能静默留空（会被当成“没识别到”）
+                        parts.push('<span class="text-danger">这串码里没有 (21) 序列号段</span>');
+                    }
                 }
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
                 const codeInfo = parts.length ? '<div class="mt-1">码内信息：' + parts.join('，') + '</div>' : '';
 
                 if (!p.di && !parts.length) {
-                    showUdi('未从这串内容识别出 GS1 编码，请确认扫的是试剂盒的 DM 码（院内自印标签请用出库/使用页扫码）。', 'warning');
+                    showUdi('未从这串内容识别出 GS1 编码，请确认扫的是试剂盒的 DM 码（院内自印标签请用出库/使用页扫码）。<br>读到的内容：<b>' +
+                        udiEscape(String(code).slice(0, 120)) + '</b>（共 ' + String(code).length + ' 个字符）', 'warning');
                     return;
                 }
                 const prod = d.product;
@@ -597,9 +602,10 @@
                                 (c.reason ? '（' + udiEscape(c.reason) + '）' : '') + '</button>';
                         }).join('') + '</div>';
                 }
+                const headLine = '<i class="bi bi-check-circle text-success"></i> <b>已识别码内信息</b>';
                 const lead = prod
-                    ? '<i class="bi bi-info-circle text-warning"></i> 已识别该产品，但本系统试剂档案里还没有它对得上的记录：可从下面选一条已有的，或者点下方按钮直接建档（名称/规格/注册证/厂家自动填好，保存后回到本页自动重新识别）'
-                    : '<i class="bi bi-exclamation-triangle text-warning"></i> 这个产品标识不在本地 UDI 库（未导入发布文件或属老批次）。码内信息已解析，请手工选择已有试剂；若是新试剂，点下方按钮把它加进档案';
+                    ? headLine + '（批号、日期、序列号已填进右侧表单），但本系统试剂档案里还没有它对得上的记录：可从下面选一条已有的，或者点下方按钮直接建档（名称/规格/注册证/厂家自动填好，保存后回到本页自动重新识别）'
+                    : headLine + '（批号、日期、序列号已填进右侧表单）；这个产品标识不在本地 UDI 库（未导入发布文件或属老批次）。请手工选择已有试剂；若是新试剂，点下方按钮把它加进档案';
                 showUdi(lead + codeInfo + prodInfo + cand + udiCreateLink(prod, code), 'warning');
             })
             .catch(function () { showUdi('识别请求失败，请检查服务是否正常', 'danger'); });
