@@ -9,7 +9,6 @@
         <div class="card" style="border:2px solid var(--primary);">
             <div class="card-body">
                 <h5 class="mb-2"><i class="bi bi-upc-scan text-primary"></i> 扫试剂盒 UDI 码</h5>
-                <p class="text-muted small mb-3">扫码枪扫试剂盒上的 Data Matrix 码，自动带出试剂、批号、生产日期、有效期到右侧表单。</p>
                 <div class="input-group input-group-lg">
                     <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
                     <input type="text" class="form-control" id="udiInput" autocomplete="off" autofocus
@@ -27,15 +26,9 @@
 
                 <div class="form-check mt-3 p-2 rounded" style="background:var(--primary-light);">
                     <input class="form-check-input ms-0 me-2" type="checkbox" id="serialToggle">
-                    <label class="form-check-label small" for="serialToggle">
-                        <b>按序列号管理（识别 21）</b>
-                        <span class="d-block text-muted mt-1">默认关闭：按批号整批入库不用勾，序列号既不填也不保存；勾上才会填进右侧「序列号」框、查重并入库。码里本身没有 (21) 的试剂（如 HIV）照常入库，序列号显示为 —。</span>
-                    </label>
+                    <label class="form-check-label small" for="serialToggle"><b>按序列号管理</b></label>
                 </div>
 
-                <div class="small text-muted mt-3">
-                    <i class="bi bi-info-circle"></i> 手机/局域网（http）访问时浏览器禁用摄像头，请用「拍照识别」。
-                </div>
                 <div id="udiResult" class="mt-3"></div>
 
                 <div class="border-top mt-3 pt-3">
@@ -46,17 +39,12 @@
                         <button type="button" class="btn btn-link btn-sm ms-auto text-muted p-0 px-1 d-none"
                                 id="pendingClear">清空</button>
                     </div>
-                    <div id="pendingEmpty" class="small text-muted">
-                        每扫一个盒码就自动加一条；多种试剂一起扫完、核对数量后，点下面按钮一次提交。
-                    </div>
+                    <div id="pendingEmpty" class="small text-muted">扫一码加一条，核对后一起提交。</div>
                     <div id="pendingList" class="d-flex flex-column gap-2"></div>
                     <div id="pendingError" class="mt-2"></div>
                     <button type="button" class="btn btn-success w-100 mt-2 d-none" id="pendingSubmit">
                         <i class="bi bi-check2-all"></i> 一次提交全部入库
                     </button>
-                    <div class="form-text mt-1">
-                        提交时使用右侧的验收人 / 供应商 / 存放位置 / 接收状态，数量可在每条上改。
-                    </div>
                 </div>
             </div>
         </div>
@@ -78,7 +66,7 @@
                         <div class="col-12 d-none" id="dupWarn"></div>
 
                         <div class="col-12 col-md-6">
-                            <label class="form-label">试剂分类（筛选）</label>
+                            <label class="form-label">试剂分类</label>
                             <select class="form-select" id="categoryFilter">
                                 <option value="">全部分类</option>
                                 {% for c in categories %}
@@ -87,7 +75,7 @@
                             </select>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label">生产企业（筛选）</label>
+                            <label class="form-label">生产企业</label>
                             <select class="form-select" id="mfrFilter">
                                 <option value="">全部厂家</option>
                                 {% for m in manufacturers %}
@@ -108,29 +96,25 @@
                                 </option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text" id="packTip">请选择试剂，系统将按数量为每包装生成唯一条码</div>
+                            <div class="form-text" id="packTip">请选择试剂</div>
                         </div>
 
                         <div class="col-12 col-md-6">
                             <label class="form-label required">产品批号</label>
                             <input class="form-control" name="batch_no" id="batchNo" required placeholder="如 W041606007">
-                            <div class="form-text">UDI 10，扫码自动填</div>
                         </div>
                         <div class="col-12 col-md-6">
                             <label class="form-label required">有效期</label>
                             <input type="date" class="form-control" name="expire_date" id="expireDate" required>
-                            <div class="form-text">UDI 17，必填</div>
                         </div>
 
                         <div class="col-12 col-md-6">
                             <label class="form-label">序列号</label>
-                            <input class="form-control" name="serial_no" id="serialNo" placeholder="UDI 21，可空">
-                            <div class="form-text">勾选左侧「识别序列号」才自动填，并校验是否已入过库</div>
+                            <input class="form-control" name="serial_no" id="serialNo" placeholder="可空">
                         </div>
                         <div class="col-12 col-md-6">
                             <label class="form-label">生产日期</label>
                             <input type="date" class="form-control" name="produce_date" id="produceDate">
-                            <div class="form-text">UDI 11，可空；扫到就填</div>
                         </div>
 
                         <div class="col-12 col-md-6">
@@ -167,7 +151,7 @@
                         </div>
 
                         <div class="col-12 col-md-6">
-                            <label class="form-label required">验收人（双人验收）</label>
+                            <label class="form-label required">验收人</label>
                             <select class="form-select" name="verifier_id" required>
                                 <option value="">请选择验收人</option>
                                 {% for v in verifiers %}
@@ -204,7 +188,7 @@
             </div>
             <div class="modal-body">
                 <video id="udiVideo" playsinline style="width:100%; border-radius:8px; background:#000;"></video>
-                <div class="form-text mt-2">把试剂盒上的黑色方块码（Data Matrix）对准镜头，识别成功后自动关闭。</div>
+                <div class="form-text mt-2">对准试剂盒上的方块码，识别成功自动关闭。</div>
             </div>
         </div>
     </div>
@@ -288,7 +272,7 @@
             priceLabel.textContent = '每' + u + '单价（元）';
             updateHint();
         } else {
-            tip.innerHTML = '<i class="bi bi-info-circle"></i> 请选择试剂，系统将按数量为每包装生成唯一条码';
+            tip.innerHTML = '<i class="bi bi-info-circle"></i> 请选择试剂';
             unitSuffix.textContent = '盒';
             priceLabel.textContent = '每盒单价（元）';
             hint.textContent = '';
@@ -297,7 +281,7 @@
     function updateHint() {
         const q = parseInt(quantityInput.value) || 0;
         const hint = document.getElementById('barcodeHint');
-        hint.innerHTML = q > 0 ? '将生成 <b class="text-primary">' + q + '</b> 枚条码并打印' : '';
+        hint.innerHTML = q > 0 ? '条码 <b class="text-primary">' + q + '</b> 枚' : '';
     }
     reagentSel.addEventListener('change', updateTip);
     quantityInput.addEventListener('input', updateHint);
@@ -326,14 +310,11 @@
     function showDupWarn(info) {
         dupWarn.classList.remove('d-none');
         dupWarn.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 small">' +
-            '<i class="bi bi-x-circle"></i> <b>这一盒已经入过库，不能重复入库</b>：' +
-            '序列号已登记在入库单 <b>' + udiEscape(info.order_no) + '</b>' +
+            '<i class="bi bi-x-circle"></i> <b>这一盒已入库</b>：单 <b>' + udiEscape(info.order_no) + '</b>' +
             (info.reagent ? '（' + udiEscape(info.reagent) : '') +
             (info.batch_no ? '，批号 ' + udiEscape(info.batch_no) : '') +
             (info.reagent ? '）' : '') +
             (info.create_time ? '，' + udiEscape(info.create_time) : '') +
-            (info.status_text ? '，' + udiEscape(info.status_text) : '') +
-            '。<br>如果这次是按批号整批入库，请取消左侧「识别序列号」再提交。' +
             (info.sid ? ' <a class="ms-1" href="/stock-in/' + info.sid + '" target="_blank">查看原单</a>' : '') +
             '</div>';
         setSubmitLock(true);
@@ -454,7 +435,7 @@
         const verifierSel = document.querySelector('[name="verifier_id"]');
         if (!verifierSel.value) {
             pendingError.innerHTML = '<div class="alert alert-warning py-1 px-2 mb-0 small">' +
-                '<i class="bi bi-exclamation-triangle"></i> 先在右侧选「验收人」，批量入库也要双人验收</div>';
+                '<i class="bi bi-exclamation-triangle"></i> 先在右侧选验收人</div>';
             verifierSel.scrollIntoView({ behavior: 'smooth', block: 'center' });
             verifierSel.focus();
             return;
@@ -489,13 +470,12 @@
               }
               const errs = (d && d.errors) || ['提交失败'];
               pendingError.innerHTML = '<div class="alert alert-danger py-2 px-2 mb-0 small">' +
-                  '<b>没有提交，请先处理：</b><br>' +
                   errs.map(function (x) { return '· ' + udiEscape(x); }).join('<br>') + '</div>';
               renderPending();
           })
           .catch(function () {
               pendingError.innerHTML = '<div class="alert alert-danger py-1 px-2 mb-0 small">' +
-                  '请求失败，请检查服务是否正常</div>';
+                  '提交失败，请检查服务</div>';
               renderPending();
           });
     });
@@ -517,7 +497,7 @@
     // URL 对象拼参数，绕开实体解析。
     function udiCreateLink(prod, code) {
         if (!CAN_CREATE_REAGENT) {
-            return '<div class="mt-1 small">当前账号没有建档权限，请让组长在「基础数据 → 试剂档案」里先建这一条。</div>';
+            return '<div class="mt-1 small">无建档权限，请联系组长建档</div>';
         }
         const p = prod || {};
         function attr(name, val) {
@@ -526,7 +506,7 @@
         return '<button type="button" class="btn btn-sm btn-success ms-0 mt-2 w-100 udi-new-reagent"' +
             attr('data-name', p.name) + attr('data-spec', p.spec) + attr('data-reg', p.reg_no) +
             attr('data-mfr', p.mfr) + attr('data-di', p.di) + attr('data-code', code) +
-            '>＋ 新建这条试剂档案</button>';
+            '>＋ 新建试剂档案</button>';
     }
     function selectReagentById(id) {
         categorySel.value = '';
@@ -560,31 +540,31 @@
                     clearDupWarn();
                     if (wantSerial() && !p.serial) {
                         // 勾了但码里确实没有 21：标明“—”，仍按批号正常入库，不当作识别失败
-                        parts.push('序列号 <b>—</b><span class="text-muted">（这串码没有 (21) 段）</span>');
+                        parts.push('序列号 <b>—</b>');
                     }
                 }
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
-                const codeInfo = parts.length ? '<div class="mt-1">码内信息：' + parts.join('，') + '</div>' : '';
+                const codeInfo = parts.length ? '<div class="mt-1">' + parts.join(' ｜ ') + '</div>' : '';
 
                 if (!p.di && !parts.length) {
-                    showUdi('未从这串内容识别出 GS1 编码，请确认扫的是试剂盒的 DM 码（院内自印标签请用出库/使用页扫码）。<br>读到的内容：<b>' +
-                        udiEscape(String(code).slice(0, 120)) + '</b>（共 ' + String(code).length + ' 个字符）', 'warning');
+                    showUdi('没识别出 GS1 码，扫到的内容：<b>' +
+                        udiEscape(String(code).slice(0, 120)) + '</b>（' + String(code).length + ' 字符）', 'warning');
                     return;
                 }
                 const prod = d.product;
                 let prodInfo = '';
                 if (prod) {
-                    prodInfo = '<div class="mt-1">UDI 库：<b>' + udiEscape(prod.name) + '</b>' +
-                        (prod.spec ? '<br>规格 ' + udiEscape(prod.spec) : '') +
-                        (prod.mfr ? ' ｜ ' + udiEscape(prod.mfr) : '') +
-                        (prod.reg_no ? '<br>注册证 ' + udiEscape(prod.reg_no) : '') + '</div>';
+                    prodInfo = '<div class="mt-1"><b>' + udiEscape(prod.name) + '</b>' +
+                        (prod.spec ? '，' + udiEscape(prod.spec) : '') +
+                        (prod.mfr ? '<br>' + udiEscape(prod.mfr) : '') +
+                        (prod.reg_no ? ' ｜ 证 ' + udiEscape(prod.reg_no) : '') + '</div>';
                 }
                 if (d.reagent_id) {
                     selectReagentById(d.reagent_id);
                     const opt = reagentSel.options[reagentSel.selectedIndex];
                     const isDup = !!(p.serial && wantSerial() && d.serial_dup);
-                    let pendMsg = isDup ? '（这一盒已入过库，没加进清单）' : '，已加入待入库清单';
+                    let pendMsg = isDup ? '（已入库，未加入清单）' : '，已加入清单';
                     if (!isDup) {
                         // 扫码成功就攒进待入库清单：无序列号的按批号合并数量 +1；
                         // 有序列号的是具体一盒，序列号唯一，重复扫不再累加
@@ -601,10 +581,10 @@
                             udi_di: p.di || '',
                         });
                         if (!added) {
-                            pendMsg = '，但这一盒已在待入库清单里（序列号唯一，没有重复加）';
+                            pendMsg = '，已在清单中';
                         }
                     }
-                    showUdi('<i class="bi bi-check-circle text-success"></i> 已自动选中试剂：<b>' +
+                    showUdi('<i class="bi bi-check-circle text-success"></i> <b>' +
                         udiEscape(opt ? opt.text.trim() : '') + '</b>' +
                         pendMsg +
                         codeInfo + prodInfo, isDup ? 'warning' : 'success');
@@ -619,13 +599,13 @@
                                 (c.reason ? '（' + udiEscape(c.reason) + '）' : '') + '</button>';
                         }).join('') + '</div>';
                 }
-                const headLine = '<i class="bi bi-check-circle text-success"></i> <b>已识别码内信息</b>';
+                const headLine = '<i class="bi bi-check-circle text-success"></i> <b>已识别</b>，右侧已填入';
                 const lead = prod
-                    ? headLine + '（批号、日期、序列号已填进右侧表单），但本系统试剂档案里还没有它对得上的记录：可从下面选一条已有的，或者点下方按钮直接建档（名称/规格/注册证/厂家自动填好，保存后回到本页自动重新识别）'
-                    : headLine + '（批号、日期、序列号已填进右侧表单）；这个产品标识不在本地 UDI 库（未导入发布文件或属老批次）。请手工选择已有试剂；若是新试剂，点下方按钮把它加进档案';
+                    ? headLine + '。档案里没有这条试剂：选下方已有试剂，或直接建档'
+                    : headLine + '；UDI 库里没有这个产品：选已有试剂或建档';
                 showUdi(lead + codeInfo + prodInfo + cand + udiCreateLink(prod, code), 'warning');
             })
-            .catch(function () { showUdi('识别请求失败，请检查服务是否正常', 'danger'); });
+            .catch(function () { showUdi('识别失败，请检查服务', 'danger'); });
     }
     udiInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
@@ -652,7 +632,7 @@
         if (!btn) { return; }
         selectReagentById(btn.dataset.id);
         showUdi('<i class="bi bi-check-circle text-success"></i> 已选：<b>' +
-            udiEscape(btn.textContent) + '</b>（提交入库后系统会记住这个 UDI 码）', 'success');
+            udiEscape(btn.textContent) + '</b>，提交后自动记住这个 DI', 'success');
     });
 
     // 拍照识别：手机 / 局域网（http 非安全上下文）也能用，上传照片不要求 HTTPS
@@ -668,8 +648,8 @@
     udiPhotoInput.addEventListener('change', function () {
         const file = udiPhotoInput.files && udiPhotoInput.files[0];
         if (!file) { return; }
-        const fail = '照片里没有识别到 DM 码，请靠近一点、把码放正、避免反光再拍一次';
-        showUdi('正在识别照片…', 'info');
+        const fail = '没识别到码，请靠近、放正、避免反光再拍';
+        showUdi('正在识别…', 'info');
         const hints = new Map();
         hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,
                   [ZXing.BarcodeFormat.DATA_MATRIX, ZXing.BarcodeFormat.QR_CODE]);
@@ -696,7 +676,7 @@
         };
         img.onerror = function () {
             URL.revokeObjectURL(objUrl);
-            showUdi('这张图片打不开，请重新拍照或换一张', 'danger');
+            showUdi('图片打不开，请重拍', 'danger');
         };
         img.src = objUrl;
     });
@@ -707,7 +687,7 @@
     }
     document.getElementById('udiCamBtn').addEventListener('click', function () {
         if (!window.isSecureContext) {
-            alert('摄像头扫码只能在 localhost 或 HTTPS 访问时使用。\n当前是 http://局域网IP 访问，浏览器禁止调用摄像头 —— 请直接用扫码枪扫 DM 码，或用「拍照识别」。');
+            alert('局域网 http 下浏览器禁用摄像头，请用扫码枪或拍照识别');
             return;
         }
         if (typeof ZXing === 'undefined') {
@@ -731,8 +711,8 @@
         }).catch(function (err) {
             stopUdiCam();
             camModal.hide();
-            alert('无法打开摄像头：' + (err && err.message ? err.message : err) +
-                  '\n请确认摄像头已连接，且浏览器已允许本站使用摄像头（地址栏左侧的摄像头图标）。');
+            alert('打不开摄像头：' + (err && err.message ? err.message : err) +
+                  '\n请检查摄像头连接和浏览器的摄像头权限');
         });
     });
     document.getElementById('udiCamModal').addEventListener('hidden.bs.modal', stopUdiCam);
@@ -744,3 +724,5 @@
     }
 </script>
 {% endblock %}
+
+

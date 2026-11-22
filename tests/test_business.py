@@ -654,9 +654,9 @@ def test_in_add_page_has_udi_scanner(client):
 
 
 def test_in_add_page_guides_to_create_reagent(client):
-    """档案里没有该试剂时，结果卡片给出「新建这条试剂档案」入口，并把码带过去自动重扫。"""
+    """档案里没有该试剂时，结果卡片给出「新建试剂档案」入口，并把码带过去自动重扫。"""
     html = client.get("/stock-in/add").get_data(as_text=True)
-    assert "新建这条试剂档案" in html
+    assert "新建试剂档案" in html
     # 多参数 URL 不能直接拼进 href（"&reg_no=" 会被当成实体 ®），改为 data-* + URL 对象
     assert "udi-new-reagent" in html
     assert "searchParams.set(pair[1], v)" in html
