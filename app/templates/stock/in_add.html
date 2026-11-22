@@ -24,6 +24,13 @@
                     <input type="file" id="udiPhoto" accept="image/*" capture="environment" class="d-none">
                     <span class="small text-muted">支持 GS1 Data Matrix（含 01 产品码 / 17 效期 / 10 批号）；手机/局域网请用“拍照识别”</span>
                 </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="serialToggle">
+                    <label class="form-check-label small" for="serialToggle">
+                        识别序列号（<code>21</code>）
+                        <span class="text-muted">— 按批号整批入库时不用勾；勾上才会把序列号填进「序列号」框并保存</span>
+                    </label>
+                </div>
                 <div id="udiResult" class="mt-2"></div>
             </div>
         </div>
@@ -268,6 +275,14 @@
     const expireInput = document.getElementById('expireDate');
     const serialInput = document.getElementById('serialNo');
     const produceInput = document.getElementById('produceDate');
+    const serialToggle = document.getElementById('serialToggle');
+    // 默认不识别序列号：按批号整批入库时，序列号留着反而每次都要手动删
+    function wantSerial() { return !!(serialToggle && serialToggle.checked); }
+    if (serialToggle) {
+        serialToggle.addEventListener('change', function () {
+            if (!wantSerial()) { serialInput.value = ''; }
+        });
+    }
 
     function udiEscape(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -316,7 +331,12 @@
                 udiDi.value = p.di || '';
                 const parts = [];
                 if (p.batch_no) { batchInput.value = p.batch_no; parts.push('批号 <b>' + udiEscape(p.batch_no) + '</b>'); }
-                if (p.serial) { serialInput.value = p.serial; parts.push('序列号 <b>' + udiEscape(p.serial) + '</b>'); }
+                if (p.serial && wantSerial()) {
+                    serialInput.value = p.serial;
+                    parts.push('序列号 <b>' + udiEscape(p.serial) + '</b>');
+                } else if (!wantSerial()) {
+                    serialInput.value = '';          // 未勾选识别序列号：按批号入库，不填序列号
+                }
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
                 const codeInfo = parts.length ? '码内信息：' + parts.join('，') : '';

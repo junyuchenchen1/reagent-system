@@ -990,6 +990,11 @@ def test_in_add_page_has_serial_and_produce_fields(client):
     assert 'name="serial_no"' in html and 'id="serialNo"' in html
     assert 'name="produce_date"' in html and 'id="produceDate"' in html
     assert 'name="batch_no"' in html and 'name="expire_date"' in html
+    # 识别序列号开关默认关闭：按批号整批入库时不用每次手动删序列号
+    assert 'id="serialToggle"' in html
+    toggle_line = [ln for ln in html.splitlines() if 'id="serialToggle"' in ln][0]
+    assert "checked" not in toggle_line
+    assert "wantSerial()" in html
 
 
 def test_stock_in_saves_serial_and_produce_date(client, db_session, users, reagent):
