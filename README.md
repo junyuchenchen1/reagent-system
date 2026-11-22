@@ -242,6 +242,8 @@ waitress-serve --host=0.0.0.0 --port=8000 run:app
 
 > **导出报错怎么查**：所有 500 都会把完整堆栈写进 `logs/error.log`（页面同时给出「错误已记录」提示，不会再只显示英文 Internal Server Error）。导出类接口另外做了防护：`status` 等参数非法只忽略筛选不报错、日期为空不炸、同一秒重复点导出会自动换唯一文件名（Windows 下旧文件被下载占用的 `PermissionError` 已消除）；生成 Excel 失败会提示「导出失败，错误已写入 logs/error.log」并退回列表页。`logs/error.log` 为空就说明服务端没抛异常，那是浏览器/网络侧的问题。
 
+> **openpyxl 版本兼容**：签名图片插入用的 `AnchorMarker` 只有 openpyxl 3.1+ 才有，老版本（2.x / 3.0）上会 `ImportError` 把**所有导出**打成 500（`logs/error.log` 里表现为 `cannot import name 'AnchorMarker'`）。现在这段改成软导入：拿不到精确锚点 API 就自动退回「图片锚定到单元格」的写法，2.x 也能正常导出。若仍想用精确居中锚点，升级依赖即可：`python -m pip install -U "openpyxl>=3.1" "Pillow>=10"`。
+
 三类角色（RBAC，`app/utils/permission.py`）：
 
 - **系统管理员 admin**：用户管理与签名、操作日志、数据导入导出（仅 admin 可用），以及全部业务功能；入库单可直接修改/删除（限待审核）。

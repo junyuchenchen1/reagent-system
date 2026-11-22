@@ -198,27 +198,40 @@ def export_excel(sheet_name: str, headers: list, rows: list, filename: str) -> s
     ws.freeze_panes = "A2"
     ws.row_dimensions[1].height = 24
 
-    # 插入签名浮动图片（OneCellAnchor 锚定到单元格）
+    # 插入签名浮动图片（OneCellAnchor 锚定到单元格并居中）
+    # 注意：AnchorMarker 只在 openpyxl 3.1+ 的 spreadsheet_drawing 里有；
+    # 老版本（2.x / 3.0）上这行 import 会直接 ImportError，把整个导出打成 500。
+    # 所以这里软导入：拿不到就退回「字符串锚点」写法（所有版本都支持）。
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
-    from openpyxl.drawing.xdr import XDRPositiveSize2D
-    from openpyxl.utils.units import pixels_to_EMU
+
+    _ANCHOR_API = True
+    try:
+        from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+        from openpyxl.drawing.xdr import XDRPositiveSize2D
+        from openpyxl.utils.units import pixels_to_EMU
+        AnchorMarker(col=0, colOff=0, row=0, rowOff=0)   # 试构造一次，确认版本真支持
+    except Exception as _imp_err:
+        _ANCHOR_API = False
+        print(f"[导出签名] 当前 openpyxl 不支持精确锚点（{_imp_err}），改用单元格锚定")
+
     for cell_ref, sig_path, fallback in sig_cells:
         try:
             img = XLImage(sig_path)
             img.width = SIG_IMG_W
             img.height = SIG_IMG_H
             cell = ws[cell_ref]
-            col_idx = cell.column - 1
-            row_zero = cell.row - 1
-            col_letter = cell.column_letter
-            col_width_px = ws.column_dimensions[col_letter].width * 7 + 5
-            off_x = max(0, int((col_width_px - SIG_IMG_W) / 2))
-            off_y = max(0, int((SIG_ROW_H * 96 / 72 - SIG_IMG_H) / 2))
-            marker = AnchorMarker(col=col_idx, colOff=pixels_to_EMU(off_x),
-                                  row=row_zero, rowOff=pixels_to_EMU(off_y))
-            size = XDRPositiveSize2D(pixels_to_EMU(SIG_IMG_W), pixels_to_EMU(SIG_IMG_H))
-            img.anchor = OneCellAnchor(_from=marker, ext=size)
+            if _ANCHOR_API:
+                col_letter = cell.column_letter
+                col_width_px = ws.column_dimensions[col_letter].width * 7 + 5
+                off_x = max(0, int((col_width_px - SIG_IMG_W) / 2))
+                off_y = max(0, int((SIG_ROW_H * 96 / 72 - SIG_IMG_H) / 2))
+                marker = AnchorMarker(col=cell.column - 1, colOff=pixels_to_EMU(off_x),
+                                      row=cell.row - 1, rowOff=pixels_to_EMU(off_y))
+                size = XDRPositiveSize2D(pixels_to_EMU(SIG_IMG_W), pixels_to_EMU(SIG_IMG_H))
+                img.anchor = OneCellAnchor(_from=marker, ext=size)
+            else:
+                # 老版本：图片就锚在这个单元格（左上角对齐，位置够用）
+                img.anchor = cell.coordinate
             ws.add_image(img)
         except Exception as e:
             print(f"[导出签名] 图片插入失败 {cell_ref}: {e}")
