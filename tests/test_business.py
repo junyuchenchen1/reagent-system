@@ -1135,10 +1135,12 @@ def test_batch_stock_in_creates_multiple_and_labels(client, db_session, users, r
 
     payload = {
         "items": [
+            # 勾了序列号就是一盒，数量只能是 1
             {"reagent_id": reagent.id, "batch_no": "B2601", "expire_date": "2028-06-30",
-             "quantity": 2, "unit_price": 12.5, "serial_no": "SN0001"},
+             "quantity": 1, "unit_price": 12.5, "serial_no": "SN0001"},
+            # 没有序列号可以按批号一次入多盒
             {"reagent_id": reagent.id, "batch_no": "B2602", "expire_date": "2028-07-31",
-             "quantity": 1, "produce_date": "2026-07-01"},
+             "quantity": 2, "produce_date": "2026-07-01"},
         ],
         "verifier_id": users["mgr"].id,
         "storage_location": "2号冰箱",
@@ -1189,6 +1191,37 @@ def test_batch_stock_in_rejects_bad_rows(client, db_session, users, reagent):
     assert r.status_code == 400
     assert any("重复入库" in e for e in r.get_json()["errors"])
     assert StockIn.query.count() == n1
+
+
+def test_serial_reagent_quantity_must_be_one(client, db_session, users, reagent):
+    """有序列号就是一盒：批量与单条都不许把数量写成 2，否则同一序列号会变成两盒。"""
+    from app.models.stock import StockIn
+
+    # 批量：序列号 + 数量 2 → 整批拒绝
+    r = client.post("/stock-in/add-batch", json={
+        "items": [{"reagent_id": reagent.id, "batch_no": "SNQ",
+                   "expire_date": "2028-06-30", "quantity": 2, "serial_no": "SNQ0001"}],
+        "verifier_id": users["mgr"].id,
+    }, headers={"X-CSRF-Token": "test-token"})
+    assert r.status_code == 400
+    assert any("数量只能为 1" in e for e in r.get_json()["errors"])
+    assert StockIn.query.filter_by(serial_no="SNQ0001").count() == 0
+
+    # 单条：序列号 + 盒数 2 → 不入库
+    client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "SNQ", "expire_date": "2028-06-30",
+        "quantity": 2, "serial_no": "SNQ0002", "verifier_id": users["mgr"].id,
+        "csrf_token": "test-token",
+    })
+    assert StockIn.query.filter_by(serial_no="SNQ0002").count() == 0
+
+    # 数量 1 正常入库
+    client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "SNQ", "expire_date": "2028-06-30",
+        "quantity": 1, "serial_no": "SNQ0003", "verifier_id": users["mgr"].id,
+        "csrf_token": "test-token",
+    })
+    assert StockIn.query.filter_by(serial_no="SNQ0003").count() == 1
 
 
 def test_in_export_and_detail_include_serial(client, db_session, users, reagent):

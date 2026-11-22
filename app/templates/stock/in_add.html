@@ -389,6 +389,7 @@
         pendingSubmit.innerHTML = '<i class="bi bi-check2-all"></i> 一次提交 ' + n + ' 条入库';
         pendingList.innerHTML = pending.map(function (it, i) {
             const showSerial = wantSerial();
+            const lockQty = !!it.serial_no;    // 有序列号 = 单盒，数量固定 1，不能改成 2 盒
             return '<div class="border rounded px-2 py-1" data-i="' + i + '">' +
                 '<div class="d-flex align-items-start gap-1">' +
                 '<div class="small" style="min-width:0;">' +
@@ -400,8 +401,11 @@
                 '</div>' +
                 '<div class="d-flex align-items-center gap-1 mt-1">' +
                 '<span class="small text-muted">数量</span>' +
-                '<input type="number" min="1" class="form-control form-control-sm js-qty" style="width:78px" value="' + it.quantity + '">' +
-                '<span class="small text-muted">' + udiEscape(it.unit || '盒') + '</span>' +
+                '<input type="number" min="1" class="form-control form-control-sm js-qty" style="width:78px" value="' +
+                (lockQty ? 1 : it.quantity) + '"' +
+                (lockQty ? ' disabled title="有序列号按单盒入库，数量固定 1"' : '') + '>' +
+                '<span class="small text-muted">' +
+                (lockQty ? '盒（序列号唯一）' : udiEscape(it.unit || '盒')) + '</span>' +
                 '</div></div>';
         }).join('');
     }
@@ -409,12 +413,19 @@
         const key = pendingKey(it);
         const exist = pending.find(function (x) { return pendingKey(x) === key; });
         if (exist) {
-            exist.quantity += 1;                   // 同批号连续扫多盒 → 合并，数量+1
+            if (it.serial_no) {
+                // 有序列号 = 具体某一盒，序列号唯一：重复扫同一盒不能再累加数量，
+                // 否则同一个序列号会变成 2 盒、生成 2 个同号盒条码
+                renderPending();
+                return false;
+            }
+            exist.quantity += 1;                   // 无序列号（按批号整批入库）→ 合并，数量+1
         } else {
             pending.push(it);
         }
         renderPending();
         pendingSubmit.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return true;
     }
 
     pendingList.addEventListener('click', function (e) {
@@ -573,9 +584,11 @@
                     selectReagentById(d.reagent_id);
                     const opt = reagentSel.options[reagentSel.selectedIndex];
                     const isDup = !!(p.serial && wantSerial() && d.serial_dup);
+                    let pendMsg = isDup ? '（这一盒已入过库，没加进清单）' : '，已加入待入库清单';
                     if (!isDup) {
-                        // 扫码成功就攒进待入库清单（同批号再扫会合并成数量 +1）
-                        addPending({
+                        // 扫码成功就攒进待入库清单：无序列号的按批号合并数量 +1；
+                        // 有序列号的是具体一盒，序列号唯一，重复扫不再累加
+                        const added = addPending({
                             reagent_id: d.reagent_id,
                             name: opt ? opt.text.trim().split('（')[0] : '已选试剂',
                             unit: opt ? (opt.dataset.unit || '盒') : '盒',
@@ -587,10 +600,13 @@
                             unit_price: parseFloat(document.querySelector('[name="unit_price"]').value) || 0,
                             udi_di: p.di || '',
                         });
+                        if (!added) {
+                            pendMsg = '，但这一盒已在待入库清单里（序列号唯一，没有重复加）';
+                        }
                     }
                     showUdi('<i class="bi bi-check-circle text-success"></i> 已自动选中试剂：<b>' +
                         udiEscape(opt ? opt.text.trim() : '') + '</b>' +
-                        (isDup ? '（这一盒已入过库，没加进清单）' : '，已加入待入库清单') +
+                        pendMsg +
                         codeInfo + prodInfo, isDup ? 'warning' : 'success');
                     return;
                 }

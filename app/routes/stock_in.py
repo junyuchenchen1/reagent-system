@@ -111,6 +111,10 @@ def in_add():
             flash("该批次已过期，禁止入库", "danger")
         elif quantity <= 0:
             flash("入库盒数必须大于 0", "danger")
+        elif serial_no and quantity > 1:
+            flash("填了序列号就是单盒入库：盒数只能为 1（一个序列号对应一盒，"
+                  "写 2 会生成两条同序列号的盒）。要按批号一次入多盒，请清空「序列号」框或取消勾选「按序列号管理」再提交。",
+                  "danger")
         elif not verifier_id:
             flash("请选择验收人（双人验收）", "danger")
         elif serial_no and dup_serial:
@@ -224,6 +228,10 @@ def in_add_batch():
             continue
         if quantity <= 0:
             errors.append(f"{label}（{reagent.name}）：入库数量必须大于 0")
+            continue
+        if serial_no and quantity != 1:
+            # 序列号唯一对应一盒：数量写成 2 会生成两个同序列号的盒
+            errors.append(f"{label}（{reagent.name}）：填了序列号就是单盒入库，数量只能为 1")
             continue
         if serial_no:
             if serial_no in seen_serial:
