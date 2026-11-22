@@ -1028,6 +1028,58 @@ def test_stock_in_saves_serial_and_produce_date(client, db_session, users, reage
     assert latest.serial_no is None and latest.produce_date is None
 
 
+def test_stock_in_rejects_duplicate_serial(client, db_session, users, reagent):
+    """同一盒（同序列号）不能重复入库；不填序列号即可按批多次入库。"""
+    from app.models.stock import StockIn
+
+    base = {
+        "reagent_id": reagent.id, "batch_no": "W041701001",
+        "expire_date": "2028-06-24", "quantity": 1,
+        "verifier_id": users["mgr"].id, "accept_status": "合格",
+        "csrf_token": "test-token",
+    }
+    r1 = client.post("/stock-in/add", data=dict(base, serial_no="99990000111122"))
+    assert r1.status_code in (302, 200)
+    first = StockIn.query.order_by(StockIn.id.desc()).first()
+    assert first.serial_no == "99990000111122"
+    n_after_first = StockIn.query.count()
+
+    # 同序列号再提交：拦下，不新增单据，页面给出提示
+    r2 = client.post("/stock-in/add", data=dict(base, serial_no="99990000111122"))
+    html = r2.get_data(as_text=True)
+    assert StockIn.query.count() == n_after_first
+    assert "同一盒不能重复入库" in html
+    assert first.order_no in html
+
+    # 不填序列号（= 不勾选「识别序列号」，按批入库）：同批号可以连续入
+    client.post("/stock-in/add", data=base)
+    client.post("/stock-in/add", data=base)
+    assert StockIn.query.count() == n_after_first + 2
+
+
+def test_udi_scan_reports_duplicate_serial(client, db_session, users, reagent):
+    """扫同一个码第二次时，接口要告诉前端这盒序列号已入库。"""
+    from app.models.stock import StockIn
+
+    code = ("0106933289830348112606241728062410W041606007"
+            "2131012305014743")
+    client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "W041606007",
+        "expire_date": "2028-06-24", "quantity": 1,
+        "verifier_id": users["mgr"].id, "accept_status": "合格",
+        "serial_no": "31012305014743", "produce_date": "2026-06-24",
+        "csrf_token": "test-token",
+    })
+    si = StockIn.query.filter_by(serial_no="31012305014743").first()
+    assert si is not None
+
+    d = client.get("/stock-in/udi?code=" + code).get_json()
+    assert d["parsed"]["serial"] == "31012305014743"
+    assert d["serial_dup"] is not None
+    assert d["serial_dup"]["order_no"] == si.order_no
+    assert d["serial_dup"]["batch_no"] == "W041606007"
+
+
 def test_stock_in_rejects_produce_date_after_expire(client, db_session, users, reagent):
     """生产日期晚于有效期属于录错，直接拒绝。"""
     resp = client.post("/stock-in/add", data={

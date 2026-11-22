@@ -41,16 +41,20 @@
         </div>
     </div>
 
-    <!-- 右：入库表单（纵向单列） -->
+    <!-- 右：入库表单（两列紧凑排布，提交按钮不用滚动也能看到） -->
     <div class="col-lg-8 mb-3">
         <div class="card">
             <div class="card-header"><h5><i class="bi bi-box-arrow-in-down"></i> 填写入库信息</h5>
+                <button class="btn btn-primary btn-sm js-submit ms-auto me-2" type="submit" form="inForm">
+                    <i class="bi bi-check-lg"></i> 提交入库
+                </button>
                 <a class="btn btn-light btn-sm" href="{{ url_for('stock_in.in_list') }}">返回列表</a>
             </div>
             <div class="card-body">
                 <form method="post" id="inForm">
                     <input type="hidden" name="udi_di" id="udiDi" value="">
                     <div class="row g-3">
+                        <div class="col-12 d-none" id="dupWarn"></div>
 
                         <div class="col-12 col-md-6">
                             <label class="form-label">试剂分类（筛选）</label>
@@ -83,36 +87,32 @@
                                 </option>
                                 {% endfor %}
                             </select>
-                            <div class="alert alert-info py-2 px-3 mt-2 mb-0 small" id="packTip">
-                                <i class="bi bi-info-circle"></i> 请选择试剂，系统将按数量为每包装生成唯一条码
-                            </div>
+                            <div class="form-text" id="packTip">请选择试剂，系统将按数量为每包装生成唯一条码</div>
                         </div>
 
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label required">产品批号</label>
                             <input class="form-control" name="batch_no" id="batchNo" required placeholder="如 W041606007">
                             <div class="form-text">UDI 10，扫码自动填</div>
                         </div>
-
-                        <div class="col-12">
-                            <label class="form-label">序列号</label>
-                            <input class="form-control" name="serial_no" id="serialNo" placeholder="UDI 21，可空">
-                            <div class="form-text">需勾选左侧「识别序列号」才会自动填；按批号整批入库时留空即可</div>
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label">生产日期</label>
-                            <input type="date" class="form-control" name="produce_date" id="produceDate">
-                            <div class="form-text">UDI 11，可空；扫到就填</div>
-                        </div>
-
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label required">有效期</label>
                             <input type="date" class="form-control" name="expire_date" id="expireDate" required>
                             <div class="form-text">UDI 17，必填</div>
                         </div>
 
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">序列号</label>
+                            <input class="form-control" name="serial_no" id="serialNo" placeholder="UDI 21，可空">
+                            <div class="form-text">勾选左侧「识别序列号」才自动填，并校验是否已入过库</div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">生产日期</label>
+                            <input type="date" class="form-control" name="produce_date" id="produceDate">
+                            <div class="form-text">UDI 11，可空；扫到就填</div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
                             <label class="form-label required">入库数量</label>
                             <div class="input-group">
                                 <input type="number" class="form-control" name="quantity" id="quantity"
@@ -121,15 +121,12 @@
                             </div>
                             <div class="form-text" id="barcodeHint"></div>
                         </div>
-
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label" id="priceLabel">每盒单价（元）</label>
                             <input type="number" step="0.01" min="0" class="form-control" name="unit_price" value="0">
                         </div>
 
-                        <div class="col-12"><hr class="my-1"></div>
-
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">供应商</label>
                             <select class="form-select" name="supplier_id">
                                 <option value="">请选择</option>
@@ -138,8 +135,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">存放位置</label>
                             <select class="form-select" name="storage_location">
                                 <option value="">请选择</option>
@@ -147,10 +143,9 @@
                                 <option value="{{ l.name }}">{{ l.name }}</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">位置在【基础数据 → 存放位置】中维护</div>
                         </div>
 
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label required">验收人（双人验收）</label>
                             <select class="form-select" name="verifier_id" required>
                                 <option value="">请选择验收人</option>
@@ -159,8 +154,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-
-                        <div class="col-12">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">接收状态</label>
                             <select class="form-select" name="accept_status">
                                 <option value="合格">合格</option>
@@ -175,14 +169,13 @@
                         </div>
                     </div>
 
-                    <div class="alert alert-warning small mt-3">
+                    <div class="form-text mt-3">
                         <i class="bi bi-printer"></i>
-                        入库后将按盒数生成对应数量的 <b>10 位条码标签</b>（每盒一枚），可直接打印为
-                        50mm×30mm 条形码贴于试剂盒，供后续扫码出库与使用。
+                        入库后按盒数生成 <b>10 位条码标签</b>（每盒一枚），可打印 50mm×30mm 条形码贴于试剂盒。
                     </div>
 
-                    <div class="mt-2">
-                        <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> 提交入库</button>
+                    <div class="mt-3">
+                        <button class="btn btn-primary js-submit" type="submit"><i class="bi bi-check-lg"></i> 提交入库</button>
                         <a class="btn btn-light" href="{{ url_for('stock_in.in_list') }}">取消</a>
                     </div>
                 </form>
@@ -307,13 +300,60 @@
     const serialInput = document.getElementById('serialNo');
     const produceInput = document.getElementById('produceDate');
     const serialToggle = document.getElementById('serialToggle');
+    const submitBtns = document.querySelectorAll('.js-submit');
+    const dupWarn = document.getElementById('dupWarn');
+
     // 默认不识别序列号：按批号整批入库时，序列号留着反而每次都要手动删
     function wantSerial() { return !!(serialToggle && serialToggle.checked); }
+
+    // 序列号重复时锁住提交按钮，逼着用户看清提示（后端也会再拦一次）
+    let dupLocked = false;
+    function setSubmitLock(lock) {
+        dupLocked = !!lock;
+        submitBtns.forEach(function (b) { b.disabled = dupLocked; });
+    }
+    function showDupWarn(info) {
+        dupWarn.classList.remove('d-none');
+        dupWarn.innerHTML = '<div class="alert alert-danger py-2 px-3 mb-0 small">' +
+            '<i class="bi bi-x-circle"></i> <b>这一盒已经入过库，不能重复入库</b>：' +
+            '序列号已登记在入库单 <b>' + udiEscape(info.order_no) + '</b>' +
+            (info.reagent ? '（' + udiEscape(info.reagent) : '') +
+            (info.batch_no ? '，批号 ' + udiEscape(info.batch_no) : '') +
+            (info.reagent ? '）' : '') +
+            (info.create_time ? '，' + udiEscape(info.create_time) : '') +
+            (info.status_text ? '，' + udiEscape(info.status_text) : '') +
+            '。<br>如果这次是按批号整批入库，请取消左侧「识别序列号」再提交。' +
+            (info.sid ? ' <a class="ms-1" href="/stock-in/' + info.sid + '" target="_blank">查看原单</a>' : '') +
+            '</div>';
+        setSubmitLock(true);
+    }
+    function clearDupWarn() {
+        dupWarn.classList.add('d-none');
+        dupWarn.innerHTML = '';
+        setSubmitLock(false);
+    }
+
     if (serialToggle) {
         serialToggle.addEventListener('change', function () {
-            if (!wantSerial()) { serialInput.value = ''; }
+            if (!wantSerial()) {
+                serialInput.value = '';   // 取消勾选：清空序列号，恢复按批入库
+                clearDupWarn();
+            }
         });
     }
+    // 手动把序列号删空 = 这一盒不按序列号登记，解除重复锁定
+    serialInput.addEventListener('input', function () {
+        if (!serialInput.value.trim()) { clearDupWarn(); }
+    });
+
+    // 回车提交也要拦住（禁用按钮不一定挡得住表单键盘提交）
+    document.getElementById('inForm').addEventListener('submit', function (e) {
+        if (dupLocked) {
+            e.preventDefault();
+            dupWarn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+    });
 
     function udiEscape(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -365,8 +405,12 @@
                 if (p.serial && wantSerial()) {
                     serialInput.value = p.serial;
                     parts.push('序列号 <b>' + udiEscape(p.serial) + '</b>');
-                } else if (!wantSerial()) {
-                    serialInput.value = '';          // 未勾选识别序列号：按批号入库，不填序列号
+                    // 这一盒已经入过库：告警 + 锁住提交按钮（后端保存时还会再拦一次）
+                    if (d.serial_dup) { showDupWarn(d.serial_dup); } else { clearDupWarn(); }
+                } else {
+                    // 未勾选识别序列号（按批入库），或码里没有 21：不登记序列号
+                    serialInput.value = '';
+                    clearDupWarn();
                 }
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }

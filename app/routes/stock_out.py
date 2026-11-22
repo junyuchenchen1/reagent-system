@@ -2,7 +2,7 @@
 """出库管理：整盒出库、扫码定位、FIFO 批号推荐、确认、导出"""
 from datetime import datetime, date
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, abort, jsonify)
+                   flash, abort, jsonify, current_app)
 from flask_login import login_required, current_user
 
 from app.extensions import db
@@ -323,29 +323,36 @@ def out_export():
         query = query.filter(db.func.date(StockOut.create_time) <= end)
     rows = []
     for o in query.order_by(StockOut.create_time.asc(), StockOut.id.asc()).all():
-        barcodes = "、".join(p.barcode for p in o.packs)
-        batches = "、".join(set(p.batch_no for p in o.packs))
+        barcodes = "、".join(p.barcode for p in o.packs if p.barcode)
+        batches = "、".join(sorted({p.batch_no for p in o.packs if p.batch_no}))
         out_uid = o.confirmer_id if o.confirmer_id else o.applicant_id
-        out_name = (o.confirmer.real_name if o.confirmer
-                    else (o.applicant.real_name if o.applicant else ""))
-        recv_name = o.receiver_user.real_name if o.receiver_user else (o.receiver or "")
+        out_name = ((o.confirmer.real_name if o.confirmer else
+                     (o.applicant.real_name if o.applicant else "")) or "")
+        recv_name = ((o.receiver_user.real_name if o.receiver_user else (o.receiver or "")) or "")
         recv_uid = o.receiver_id if o.receiver_id else None
         rows.append([
-            o.order_no, o.reagent.name, o.reagent.registrant or "", o.reagent.spec or "",
+            o.order_no or "", o.reagent.name if o.reagent else "",
+            (o.reagent.registrant or "") if o.reagent else "",
+            (o.reagent.spec or "") if o.reagent else "",
             batches, barcodes, o.quantity,
-            o.reagent.unit or "盒",
+            (o.reagent.unit or "盒") if o.reagent else "盒",
             o.type_text,
-            (out_uid, out_name) if out_uid else "",
+            (out_uid, out_name) if out_uid else out_name,
             (recv_uid, recv_name) if recv_uid else recv_name,
             o.status_text,
-            o.create_time.strftime("%Y-%m-%d %H:%M"),
+            o.create_time.strftime("%Y-%m-%d %H:%M") if o.create_time else "",
             o.reason or "",
         ])
     filename = f"出库记录_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
-    path = export_excel(
-        "出库记录",
-        ["出库单号", "试剂名称", "生产企业", "规格", "批号", "条码", "数量", "单位", "类型",
-         "组低耗员", "接收人", "状态", "申请时间", "事由"],
-        rows, filename)
+    try:
+        path = export_excel(
+            "出库记录",
+            ["出库单号", "试剂名称", "生产企业", "规格", "批号", "条码", "数量", "单位", "类型",
+             "组低耗员", "接收人", "状态", "申请时间", "事由"],
+            rows, filename)
+    except Exception:
+        current_app.logger.exception("[导出出库] 生成 Excel 失败")
+        flash("导出出库记录失败，错误已写入 logs/error.log，请重试或联系管理员。", "danger")
+        return redirect(url_for("stock_out.out_list"))
     log_operation("出库管理", "导出出库记录 Excel")
     return send_excel(path, filename)

@@ -2,7 +2,7 @@
 """入库管理：登记、审核、详情、条码标签打印、导出"""
 from datetime import datetime, date
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, abort, jsonify)
+                   flash, abort, jsonify, current_app)
 from flask_login import login_required, current_user
 
 from app.extensions import db
@@ -21,6 +21,31 @@ def _parse_date(s):
         return datetime.strptime(s, "%Y-%m-%d").date()
     except (TypeError, ValueError):
         return None
+
+
+def _serial_used(serial_no):
+    """序列号是否已登记过入库（已取消的单子不算，允许重录）。返回已有入库单或 None。"""
+    if not serial_no:
+        return None
+    return (StockIn.query
+            .filter(StockIn.serial_no == serial_no, StockIn.status != 2)
+            .order_by(StockIn.id.desc())
+            .first())
+
+
+def _serial_dup_info(serial_no):
+    """给扫码接口用：返回该序列号已有的入库单摘要（没有则 None）。"""
+    si = _serial_used(serial_no)
+    if not si:
+        return None
+    return {
+        "order_no": si.order_no,
+        "reagent": si.reagent.name if si.reagent else "",
+        "batch_no": si.batch_no,
+        "status_text": si.status_text,
+        "create_time": si.create_time.strftime("%Y-%m-%d %H:%M") if si.create_time else "",
+        "sid": si.id,
+    }
 
 
 @stock_in_bp.route("/")
@@ -70,6 +95,8 @@ def in_add():
         udi_di = (request.form.get("udi_di", "") or "").strip()[:32]
         serial_no = (request.form.get("serial_no", "") or "").strip()[:64]
         produce_date = _parse_date(request.form.get("produce_date", ""))
+        # 序列号（UDI 21）是单盒唯一号：入库前先查有没有已经登记过，避免同一盒重复入库
+        dup_serial = _serial_used(serial_no) if serial_no else None
 
         reagent = db.session.get(Reagent, int(reagent_id)) if reagent_id else None
         if reagent is None:
@@ -86,6 +113,13 @@ def in_add():
             flash("入库盒数必须大于 0", "danger")
         elif not verifier_id:
             flash("请选择验收人（双人验收）", "danger")
+        elif serial_no and dup_serial:
+            # 勾了「识别序列号」才会带 serial_no：同一盒（同序列号）不能重复入库
+            flash(f"序列号 {serial_no} 已在入库单 {dup_serial.order_no} 中登记过"
+                  f"（{dup_serial.reagent.name if dup_serial.reagent else '未知试剂'}，"
+                  f"批号 {dup_serial.batch_no}），同一盒不能重复入库。"
+                  f"若这次是按批号整批入库，请取消勾选「识别序列号」再提交。",
+                  "danger")
         else:
             data = {
                 "reagent_id": reagent.id, "batch_no": batch_no,
@@ -139,7 +173,12 @@ def udi_scan():
         return jsonify({"error": "缺少 code 参数"}), 400
     if len(code) > 512:
         code = code[:512]
-    return jsonify(udi_service.resolve(code))
+    data = udi_service.resolve(code)
+    # 若码里有 (21) 序列号，顺手告诉前端这一盒有没有入过库（前端勾了「识别序列号」才用）
+    serial = ((data.get("parsed") or {}).get("serial") or "").strip()
+    if serial:
+        data["serial_dup"] = _serial_dup_info(serial)
+    return jsonify(data)
 
 
 @stock_in_bp.route("/<int:sid>/audit", methods=["POST"])
@@ -254,7 +293,11 @@ def in_export():
     query = StockIn.query.join(Reagent, StockIn.reagent_id == Reagent.id)
     status = request.args.get("status", "")
     if status != "":
-        query = query.filter(StockIn.status == int(status))
+        try:
+            query = query.filter(StockIn.status == int(status))
+        except (TypeError, ValueError):
+            # 参数异常（如中文状态名）不应当 500，忽略该筛选
+            current_app.logger.warning(f"[导出入库] status 参数非法：{status!r}，已忽略")
     # 导出时间范围：最近一周/一月/半年/一年/自定义起止
     start, end = parse_export_range()
     if start:
@@ -264,23 +307,31 @@ def in_export():
     rows = []
     for si in query.order_by(StockIn.create_time.asc(), StockIn.id.asc()).all():
         rows.append([
-            si.order_no, si.reagent.name, si.reagent.registrant or "", si.reagent.spec or "",
-            si.batch_no,
-            si.expire_date.strftime("%Y-%m-%d"), si.quantity,
-            si.reagent.unit or "盒",
-            float(si.unit_price or 0), si.amount,
+            si.order_no or "", si.reagent.name if si.reagent else "",
+            (si.reagent.registrant or "") if si.reagent else "",
+            (si.reagent.spec or "") if si.reagent else "",
+            si.batch_no or "",
+            si.expire_date.strftime("%Y-%m-%d") if si.expire_date else "",
+            si.quantity,
+            (si.reagent.unit or "盒") if si.reagent else "盒",
+            float(si.unit_price or 0), float(si.amount or 0),
             si.supplier.name if si.supplier else "",
             si.accept_status or "合格",
             si.status_text,
-            (si.operator_id, si.operator.real_name) if si.operator else "",
-            (si.verifier_id, si.verifier.real_name) if si.verifier else "",
-            si.create_time.strftime("%Y-%m-%d %H:%M"),
+            (si.operator_id, si.operator.real_name or "") if si.operator_id else "",
+            (si.verifier_id, si.verifier.real_name or "") if si.verifier_id else "",
+            si.create_time.strftime("%Y-%m-%d %H:%M") if si.create_time else "",
         ])
     filename = f"入库记录_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
-    path = export_excel(
-        "入库记录",
-        ["入库单号", "试剂名称", "生产企业", "规格", "批号", "有效期", "数量", "单位", "单价(元)", "金额",
-         "供应商", "接收状态", "状态", "入库人", "验收人", "登记时间"],
-        rows, filename)
+    try:
+        path = export_excel(
+            "入库记录",
+            ["入库单号", "试剂名称", "生产企业", "规格", "批号", "有效期", "数量", "单位", "单价(元)", "金额",
+             "供应商", "接收状态", "状态", "入库人", "验收人", "登记时间"],
+            rows, filename)
+    except Exception:
+        current_app.logger.exception("[导出入库] 生成 Excel 失败")
+        flash("导出入库记录失败，错误已写入 logs/error.log，请重试或联系管理员。", "danger")
+        return redirect(url_for("stock_in.in_list"))
     log_operation("入库管理", f"导出入库记录 Excel（{range_label(start, end)}）")
     return send_excel(path, filename)

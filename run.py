@@ -12,8 +12,17 @@
     HOST=0.0.0.0  PORT=8080  python run.py
 """
 import os
+import sys
+
 from waitress import serve
 from app import create_app
+
+# 日志实时落盘：重定向到 logs\server.log 时默认有缓冲，出错堆栈可能一直卡在内存里
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 app = create_app()
 

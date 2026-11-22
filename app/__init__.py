@@ -204,6 +204,33 @@ def create_app() -> Flask:
         return render_template("errors.html", code=400,
                                message=getattr(e, "description", "请求无效")), 400
 
+    @app.errorhandler(500)
+    def server_error(e):
+        """500 统一出口：完整堆栈写 logs/error.log，页面给可读提示而不是英文报错页。"""
+        import traceback
+        original = getattr(e, "original_exception", None) or e
+        try:
+            app.logger.error("[500] %s %s -> %r", request.method, request.full_path,
+                             original, exc_info=original)
+        except Exception:
+            pass
+        print("[500]", request.method, request.full_path)
+        print("".join(traceback.format_exception(type(original), original,
+                                                 original.__traceback__)))
+        try:
+            return render_template("errors.html", code=500,
+                                   message="服务器处理出错（详细信息已写入 logs/error.log，"
+                                           "可点「返回」重试一次）"), 500
+        except Exception:
+            return "服务器处理出错，请稍后重试（详情见 logs/error.log）", 500
+
+    # Waitress 自己抛的错误（客户端断开、请求体异常等）不走 Flask，单独接进错误日志
+    _wlog = logging.getLogger("waitress")
+
+    if _err_handler not in _wlog.handlers:
+        _wlog.addHandler(_err_handler)
+    _wlog.setLevel(logging.INFO)
+
     # 自动建表（首次运行）
     with app.app_context():
         db.create_all()

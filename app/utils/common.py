@@ -224,8 +224,21 @@ def export_excel(sheet_name: str, headers: list, rows: list, filename: str) -> s
             print(f"[导出签名] 图片插入失败 {cell_ref}: {e}")
             ws[cell_ref] = fallback
 
-    path = os.path.join(current_app.config["EXPORT_FOLDER"], filename)
-    wb.save(path)
+    folder = current_app.config["EXPORT_FOLDER"]
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, filename)
+    # Windows 下同名文件可能还被上一次下载的响应占用（连点两次导出就会撞名），
+    # 直接覆盖会 PermissionError → 页面 500。这里撞名就换一个唯一名字。
+    base, ext = os.path.splitext(filename)
+    for _ in range(20):
+        if not os.path.exists(path):
+            break
+        path = os.path.join(folder, f"{base}_{uuid.uuid4().hex[:8]}{ext}")
+    try:
+        wb.save(path)
+    except PermissionError:
+        path = os.path.join(folder, f"{base}_{uuid.uuid4().hex[:8]}{ext}")
+        wb.save(path)
     return path
 
 
