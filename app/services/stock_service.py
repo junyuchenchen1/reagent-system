@@ -75,6 +75,8 @@ def create_stock_in(data: dict, user) -> StockIn:
         accept_status=data.get("accept_status", "合格"),
         is_verified=data.get("is_verified", False),
         udi_di=data.get("udi_di") or None,
+        serial_no=(data.get("serial_no") or None),
+        produce_date=data.get("produce_date") or None,
         remark=data.get("remark"),
     )
     db.session.add(stock_in)

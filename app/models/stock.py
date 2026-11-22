@@ -39,6 +39,8 @@ class StockIn(db.Model):
     accept_status = db.Column(db.String(10), default="合格", comment="接收状态：合格/破损/拒收")
     is_verified = db.Column(db.Boolean, default=False, comment="新批号是否已性能验证")
     udi_di = db.Column(db.String(32), comment="入库时所扫 UDI 产品标识（可追溯）")
+    serial_no = db.Column(db.String(64), comment="序列号（UDI 21，非必填）")
+    produce_date = db.Column(db.Date, comment="生产日期（UDI 11，非必填）")
     audit_time = db.Column(db.DateTime, comment="审核时间")
     remark = db.Column(db.String(255))
     create_time = db.Column(db.DateTime, default=datetime.now)

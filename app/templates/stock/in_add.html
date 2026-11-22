@@ -70,6 +70,16 @@
                     <input class="form-control" name="batch_no" id="batchNo" required placeholder="如 072610A">
                 </div>
                 <div class="col-md-3 mb-3">
+                    <label class="form-label">序列号</label>
+                    <input class="form-control" name="serial_no" id="serialNo" placeholder="UDI 21，可空">
+                    <div class="form-text">扫码自动填，没有可不填</div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">生产日期</label>
+                    <input type="date" class="form-control" name="produce_date" id="produceDate">
+                    <div class="form-text">UDI 11，可空</div>
+                </div>
+                <div class="col-md-3 mb-3">
                     <label class="form-label required">有效期</label>
                     <input type="date" class="form-control" name="expire_date" id="expireDate" required>
                 </div>
@@ -256,6 +266,8 @@
     const udiDi = document.getElementById('udiDi');
     const batchInput = document.getElementById('batchNo');
     const expireInput = document.getElementById('expireDate');
+    const serialInput = document.getElementById('serialNo');
+    const produceInput = document.getElementById('produceDate');
 
     function udiEscape(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -304,6 +316,8 @@
                 udiDi.value = p.di || '';
                 const parts = [];
                 if (p.batch_no) { batchInput.value = p.batch_no; parts.push('批号 <b>' + udiEscape(p.batch_no) + '</b>'); }
+                if (p.serial) { serialInput.value = p.serial; parts.push('序列号 <b>' + udiEscape(p.serial) + '</b>'); }
+                if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
                 const codeInfo = parts.length ? '码内信息：' + parts.join('，') : '';
 

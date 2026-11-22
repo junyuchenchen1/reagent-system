@@ -68,6 +68,8 @@ def in_add():
         verifier_id = request.form.get("verifier_id") or None
         accept_status = request.form.get("accept_status", "合格")
         udi_di = (request.form.get("udi_di", "") or "").strip()[:32]
+        serial_no = (request.form.get("serial_no", "") or "").strip()[:64]
+        produce_date = _parse_date(request.form.get("produce_date", ""))
 
         reagent = db.session.get(Reagent, int(reagent_id)) if reagent_id else None
         if reagent is None:
@@ -76,6 +78,8 @@ def in_add():
             flash("请填写批号", "danger")
         elif expire_date is None:
             flash("请选择正确的有效期", "danger")
+        elif produce_date and produce_date > expire_date:
+            flash("生产日期不能晚于有效期", "danger")
         elif expire_date < date.today():
             flash("该批次已过期，禁止入库", "danger")
         elif quantity <= 0:
@@ -89,7 +93,8 @@ def in_add():
                 "unit_price": float(unit_price), "supplier_id": supplier_id,
                 "storage_location": storage_location, "remark": remark,
                 "verifier_id": int(verifier_id), "accept_status": accept_status,
-                "udi_di": udi_di,
+                "udi_di": udi_di, "serial_no": serial_no,
+                "produce_date": produce_date,
             }
             si = stock_service.create_stock_in(data, current_user)
             if udi_di:

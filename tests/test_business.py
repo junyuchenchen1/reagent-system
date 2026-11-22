@@ -952,3 +952,79 @@ def test_parse_dm_with_gs1_symbol_prefix():
     assert p["di"] == "06947145509262"
     assert p["batch_no"] == "114260321"
     assert p["expire_date"].isoformat() == "2027-07-09"
+
+
+def test_parse_dm_splits_serial_from_batch():
+    """真实盒码：(21) 序列号紧跟在批号后面（无 GS），要分出来，批号不能被吞。
+
+    标签：批号 W041606007 / 生产 2026-06-24 / 失效 2028-06-24 / 序列号 31012305014743
+    """
+    from app.services.udi_service import parse_dm
+
+    forms = [
+        "(01)06933289830348(11)260624(17)280624(10)W041606007(21)31012305014743",
+        "0106933289830348112606241728062410W0416060072131012305014743",
+        "0106933289830348\x1d11260624\x1d17280624\x1d10W041606007\x1d2131012305014743",
+    ]
+    for code in forms:
+        p = parse_dm(code)
+        assert p["di"] == "06933289830348", code
+        assert p["batch_no"] == "W041606007", code
+        assert p["serial"] == "31012305014743", code
+        assert p["produce_date"].isoformat() == "2026-06-24", code
+        assert p["expire_date"].isoformat() == "2028-06-24", code
+
+
+def test_parse_dm_batch_number_without_serial_stays_intact():
+    """批号里本来就含 "21"、后面没有序列号时，不能把批号切坏。"""
+    from app.services.udi_service import parse_dm
+
+    p = parse_dm("0106933289830348112606241728062410A214560017")
+    assert p["batch_no"] == "A214560017"
+    assert "serial" not in p
+
+
+def test_in_add_page_has_serial_and_produce_fields(client):
+    """入库页要有序列号、生产日期两个非必填框；批号、有效期仍是必填。"""
+    html = client.get("/stock-in/add").get_data(as_text=True)
+    assert 'name="serial_no"' in html and 'id="serialNo"' in html
+    assert 'name="produce_date"' in html and 'id="produceDate"' in html
+    assert 'name="batch_no"' in html and 'name="expire_date"' in html
+
+
+def test_stock_in_saves_serial_and_produce_date(client, db_session, users, reagent):
+    """提交入库时把序列号、生产日期一起存下来（两者都可以不填）。"""
+    from app.models.stock import StockIn
+
+    resp = client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "W041606007",
+        "expire_date": "2028-06-24", "quantity": 1, "unit_price": 100,
+        "verifier_id": users["mgr"].id, "accept_status": "合格",
+        "serial_no": "31012305014743", "produce_date": "2026-06-24",
+        "csrf_token": "test-token",
+    })
+    assert resp.status_code in (302, 200)
+    si = StockIn.query.order_by(StockIn.id.desc()).first()
+    assert si.serial_no == "31012305014743"
+    assert si.produce_date.isoformat() == "2026-06-24"
+
+    # 不填这两项也能入库
+    resp2 = client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "W041606007",
+        "expire_date": "2028-06-24", "quantity": 1,
+        "verifier_id": users["mgr"].id, "accept_status": "合格",
+        "csrf_token": "test-token",
+    })
+    assert resp2.status_code in (302, 200)
+    latest = StockIn.query.order_by(StockIn.id.desc()).first()
+    assert latest.serial_no is None and latest.produce_date is None
+
+
+def test_stock_in_rejects_produce_date_after_expire(client, db_session, users, reagent):
+    """生产日期晚于有效期属于录错，直接拒绝。"""
+    resp = client.post("/stock-in/add", data={
+        "reagent_id": reagent.id, "batch_no": "X1", "expire_date": "2026-12-31",
+        "quantity": 1, "verifier_id": users["mgr"].id,
+        "produce_date": "2027-01-02", "csrf_token": "test-token",
+    }, follow_redirects=True)
+    assert "生产日期不能晚于有效期" in resp.get_data(as_text=True)

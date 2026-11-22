@@ -22,7 +22,8 @@ _VAR_AI = ("10", "21", "240")
 _ALL_AI = tuple(_FIXED_AI) + _VAR_AI
 
 # 变长字段后面“下一个 AI 的可信起点”：01 后必须 14 位纯数字，17/11 后必须 6 位合法日期。
-# 不把 "21"/"240" 当起点：它们出现在批号内部（如 114260321 里的 21）的概率远高于真的下一个 AI。
+# 不在这里认 "21"/"240"（批号内部像 114260321 里的 21 太常见）；
+# 批号末尾的 (21) 序列号由 _split_batch_serial 单独、保守地切开。
 _AI_NEXT = re.compile(r"(01)(\d{14})|(17|11)(\d{6})|(30)(\d{8})")
 
 # 检验试剂关键字（导入发布文件时据此过滤，避免把几百万条耗材/设备都塞进本地库）
@@ -67,6 +68,28 @@ def _next_ai_start(code: str, i: int) -> int:
             continue
         return m.start()
     return len(code)
+
+
+def _split_batch_serial(seg: str):
+    """无 GS 分隔符时，批号（AI 10）后面常直接跟序列号（AI 21），要切开。
+
+    只在"看起来确实是 21"时才切，避免把批号内部的 21 误当成 AI：
+    - 切点前批号 4~20 位；
+    - 21 之后 8~20 位字母数字，一直到码尾；
+    - 有多个候选时取最靠后的一个（真 21 通常在批号和它的值之间，批号里的 21 更靠前）。
+    返回 (批号, 序列号或 None)。
+    """
+    if not seg:
+        return seg, None
+    best = None
+    for m in re.finditer(r"21", seg):
+        j = m.start()
+        tail = seg[j + 2:]
+        if 4 <= j <= 20 and re.fullmatch(r"[0-9A-Za-z]{8,20}", tail or ""):
+            best = (seg[:j], tail)
+    if best:
+        return best
+    return seg, None
 
 
 def parse_dm(raw: str) -> dict:
@@ -121,7 +144,11 @@ def parse_dm(raw: str) -> dict:
             val = code[i:end].strip("|")
             i = end
             if ai == "10":
-                result["batch_no"] = val
+                # 批号后面若直接跟 (21) 序列号（无 GS 分隔符），在这里切开
+                head, serial = _split_batch_serial(val)
+                result["batch_no"] = head
+                if serial and "serial" not in result:
+                    result["serial"] = serial
             elif ai == "21":
                 result["serial"] = val
             elif ai == "240":
