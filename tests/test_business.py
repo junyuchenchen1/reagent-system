@@ -626,6 +626,23 @@ def test_gtin_check_digit_filters_fake_gtin():
     assert not _gtin_check_ok("12345678901234")
 
 
+def test_parse_dm_short_serial_number():
+    """真实支原体试剂码 (10)20260901(21)477：3 位短序列号也要切开，且不能把普通批号切坏。"""
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm("01069722358405741126090117270831102026090121477")
+    assert d["di"] == "06972235840574"
+    assert d["batch_no"] == "20260901"
+    assert d["serial"] == "477"
+    assert d["produce_date"].isoformat() == "2026-09-01"
+    assert d["expire_date"].isoformat() == "2027-08-31"
+
+    # 批号不是 8 位日期时，尾部 21477 不能被当序列号
+    d2 = parse_dm("0106972235840574112609011727083110ABCD21477")
+    assert d2["batch_no"] == "ABCD21477"
+    assert "serial" not in d2
+
+
 def test_parse_dm_only_di():
     from app.services.udi_service import parse_dm
 

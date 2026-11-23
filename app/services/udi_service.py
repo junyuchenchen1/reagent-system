@@ -37,7 +37,7 @@ IVD_KEYWORDS = ("试剂", "校准品", "质控品", "抗体", "染色液", "溶�
 IVD_KEYWORDS += ("稀释液", "清洗液", "鞘液", "定标液", "校准液", "缓冲液",
                  "保存液", "底物", "质控液", "参考品", "对照品", "检测盒",
                  "测定盒", "血型", "抗A", "抗B", "血清", "酶标", "标本",
-                 "采样", "溶血")
+                 "采样", "溶血", "参比液", "洗液", "内标液", "检测卡")
 
 # 名字里出现这些的，基本不是检验试剂（隐形眼镜护理液、输液器、口罩等），先排除再加关键词
 IVD_EXCLUDE = ("隐形眼镜", "护理液", "润眼", "润滑", "输液", "注射", "敷料", "口腔", "鼻腔", "耳道", "家用", "美容", "减肥")
@@ -53,6 +53,17 @@ def _gs1_date(yymmdd: str):
         return date(year, mm, dd)
     except ValueError:
         return None
+
+
+def _is_yyyymmdd(val: str) -> bool:
+    """8 位 YYYYMMDD（试剂批号常用这种写法，如 20260901）。"""
+    if not (len(val) == 8 and val.isdigit()):
+        return False
+    try:
+        date(int(val[:4]), int(val[4:6]), int(val[6:8]))
+        return True
+    except ValueError:
+        return False
 
 
 def _next_ai_start(code: str, i: int) -> int:
@@ -161,9 +172,9 @@ def _consume_ai(code: str, i: int, depth: int = 0):
             return None
         head.update(sub)
         return head
-    if ai in ("10", "21"):                          # 变长字段，值至少 5 位
+    if ai in ("10", "21"):                          # 变长字段，值至少 3 位
         best = None
-        for end in range(i + 7, n + 1):
+        for end in range(i + 5, n + 1):
             sub = _consume_ai(code, end, depth + 1)
             if sub is None:
                 continue
@@ -192,8 +203,14 @@ def _split_batch_by_ai(seg: str):
     cands = []
     for k in range(4, min(len(seg), 24) + 1):
         rest = _consume_ai(seg, k)
-        if rest is not None:
-            cands.append((k, rest))
+        if rest is None:
+            continue
+        serial = rest.get("serial")
+        if serial and len(serial) < 6 and not _is_yyyymmdd(seg[:k]):
+            # 与 _split_batch_serial 同一条保护：3~5 位短序列号只在
+            # “批号是 8 位日期”时认，避免把 ABCD21477 这类批号切成 ABCD + 477
+            continue
+        cands.append((k, rest))
     if not cands:
         return None, None
 
@@ -230,11 +247,16 @@ def _split_batch_serial(seg: str):
     for m in re.finditer(r"21", seg):
         j = m.start()
         tail = seg[j + 2:]
-        if not (4 <= j <= 20 and re.fullmatch(r"[0-9A-Za-z]{6,20}", tail or "")):
+        if not (4 <= j <= 20 and re.fullmatch(r"[0-9A-Za-z]{1,20}", tail or "")):
+            continue
+        head = seg[:j]
+        if len(tail) < 6 and not _is_yyyymmdd(head):
+            # 3~5 位的短序列号（真实盒码如 (10)20260901(21)477）只认
+            # “批号本身就是 8 位日期”这种形态；否则 ABCD21477 这类批号会被切坏
             continue
         if _next_ai_start(tail, 0) < len(tail):
             continue                            # 序列号里不该再出现 AI
-        best = (seg[:j], tail)
+        best = (head, tail)
     if best:
         return best
     return seg, None
