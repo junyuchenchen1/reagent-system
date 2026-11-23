@@ -615,6 +615,17 @@ def test_parse_dm_batch_with_ai_like_digits_backtracking():
     assert "serial" not in d
 
 
+def test_gtin_check_digit_filters_fake_gtin():
+    """真 DI 必过 Mod-10；批号里恰好 14 位的数字多半过不了，不能再被当成 01。"""
+    from app.services.udi_service import _gtin_check_ok
+
+    for di in ("06933289805346", "06954414706512", "06947145500207",
+               "04015630910281", "06972487720754"):
+        assert _gtin_check_ok(di), di
+    assert not _gtin_check_ok("17280430240108")      # 罗氏码批号里的 14 位数字
+    assert not _gtin_check_ok("12345678901234")
+
+
 def test_parse_dm_only_di():
     from app.services.udi_service import parse_dm
 

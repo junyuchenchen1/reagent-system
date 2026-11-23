@@ -93,6 +93,20 @@ def _next_ai_start(code: str, i: int) -> int:
     return strong
 
 
+def _gtin_check_ok(val: str) -> bool:
+    """GS1 GTIN-14 的 Mod-10 校验位。
+
+    这一条是“批号里恰好有 14 位数字”与“真产品标识”的关键区别：
+    真实 DI 一定通过校验，随机 14 位数字只有 1/10 能通过。
+    """
+    if not (len(val) == 14 and val.isdigit()):
+        return False
+    total = 0
+    for idx, ch in enumerate(reversed(val[:-1])):
+        total += int(ch) * (3 if idx % 2 == 0 else 1)
+    return (10 - total % 10) % 10 == int(val[-1])
+
+
 _CONSUME_MAX_DEPTH = 8
 
 
@@ -130,8 +144,8 @@ def _consume_ai(code: str, i: int, depth: int = 0):
         if len(val) != fixed:
             return None
         if ai == "01":
-            if not val.isdigit():
-                return None
+            if not val.isdigit() or not _gtin_check_ok(val):
+                return None     # 批号里的 14 位数字过不了 Mod-10，不能当产品标识
             head = {"di": val}
         elif ai == "30":
             if not val.isdigit():
@@ -188,7 +202,12 @@ def _split_batch_by_ai(seg: str):
         dates = sum(1 for key in ("expire_date", "produce_date") if rest.get(key))
         return (dates, len(rest), -k)      # 日期越多、字段越全、批号越短越可信
 
-    k, rest = max(cands, key=_score)
+    scored = sorted(cands, key=_score, reverse=True)
+    k, rest = scored[0]
+    top = _score(scored[0])
+    if len({c[0] for c in scored if _score(c) == top}) > 1:
+        rest = dict(rest)
+        rest["ambiguous"] = True           # 两种切法打平，交给人工核对
     return seg[:k], rest
 
 
@@ -261,9 +280,12 @@ def parse_dm(raw: str) -> dict:
             if not val:
                 continue
             if ai == "01":
-                # 只认真的 14 位产品标识：码尾噪音（如 "240130219004M" 里恰好出现的 01）不能覆盖
+                # 只认真的 14 位产品标识：码尾噪音（如 "240130219004M" 里恰好出现的 01）不能覆盖。
+                # 校验位不过仍保留（印刷/赋码偶有错），但记 gtin_bad 供排查
                 if val.isdigit() and len(val) == 14:
                     result.setdefault("di", val)
+                    if not _gtin_check_ok(val):
+                        result.setdefault("gtin_bad", True)
             elif ai == "30":
                 result["qty"] = val.lstrip("0") or "0"
             else:
@@ -423,6 +445,8 @@ def resolve(raw_code: str) -> dict:
                              if parsed.get("produce_date") else None),
             "serial": parsed.get("serial"),
             "extra": parsed.get("extra"),          # (240) 附加产品标识（商品号），不入库
+            "ambiguous": bool(parsed.get("ambiguous")),
+            "gtin_bad": bool(parsed.get("gtin_bad")),
         },
         "product": product.to_dict() if product else None,
         "reagent_id": reagent_id,

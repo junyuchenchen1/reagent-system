@@ -580,6 +580,9 @@
                 if (p.produce_date) { produceInput.value = p.produce_date; parts.push('生产日期 <b>' + udiEscape(p.produce_date) + '</b>'); }
                 if (p.expire_date) { expireInput.value = p.expire_date; parts.push('有效期 <b>' + udiEscape(p.expire_date) + '</b>'); }
                 const codeInfo = parts.length ? '<div class="mt-1">' + parts.join(' ｜ ') + '</div>' : '';
+                // 批号/效期有两种等分切法时提醒人工核对（码里缺 GS 分隔符才会出现）
+                const ambiguousTip = p.ambiguous
+                    ? '<div class="mt-1 text-warning">批号与有效期有两种可能的分法，请对照标签核对</div>' : '';
 
                 if (!p.di && !parts.length) {
                     showUdi('没识别出 GS1 码，扫到的内容：<b>' +
@@ -632,7 +635,7 @@
                     showUdi('<i class="bi bi-check-circle text-success"></i> <b>' +
                         udiEscape(opt ? opt.text.trim() : '') + '</b>' +
                         pendMsg +
-                        codeInfo + prodInfo, isDup ? 'warning' : 'success');
+                        codeInfo + ambiguousTip + prodInfo, isDup ? 'warning' : 'success');
                     return;
                 }
                 let cand = '';
@@ -648,7 +651,7 @@
                 const lead = prod
                     ? headLine + '。档案里没有这条试剂：选下方已有试剂，或直接建档'
                     : headLine + '；UDI 库里没有这个产品：选已有试剂或建档';
-                showUdi(lead + codeInfo + prodInfo + cand + udiCreateLink(prod, code), 'warning');
+                showUdi(lead + codeInfo + ambiguousTip + prodInfo + cand + udiCreateLink(prod, code), 'warning');
             })
             .catch(function () { showUdi('识别失败，请检查服务', 'danger'); });
     }
