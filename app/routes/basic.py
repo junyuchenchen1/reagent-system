@@ -300,6 +300,7 @@ def reagent_list():
         query = query.filter(Reagent.registrant == mfr)
     items = query.options(selectinload(Reagent.packs)).order_by(Reagent.id.desc()).all()
     categories = Category.query.order_by(Category.sort).all()
+    all_categories = categories   # 全量分类：供新增/编辑弹窗使用，不受厂家筛选影响
     # 厂家与分类的对应关系（供前端“选分类后厂家下拉自动筛选”使用）
     mfr_cat_rows = db.session.query(
         Reagent.registrant, Reagent.category_id).filter(
@@ -319,7 +320,8 @@ def reagent_list():
     else:
         filtered_categories = categories
     return render_template("basic/reagent.html", items=items,
-                           categories=filtered_categories, manufacturers=manufacturers,
+                           categories=filtered_categories, all_categories=all_categories,
+                           manufacturers=manufacturers,
                            mfr_cat_map=mfr_cat_map,
                            keyword=keyword, category_id=category_id, mfr=mfr,
                            prefill=_udi_prefill())

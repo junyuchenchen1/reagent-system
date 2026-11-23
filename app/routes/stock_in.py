@@ -321,10 +321,21 @@ def udi_scan():
     if len(code) > 512:
         code = code[:512]
     data = udi_service.resolve(code)
-    # 若码里有 (21) 序列号，顺手告诉前端这一盒有没有入过库（前端勾了「识别序列号」才用）
+    # 若码里有 (21) 序列号，顺手告诉前端这一盒有没有入过库（前端勾了「按序列号管理」才用）
     serial = ((data.get("parsed") or {}).get("serial") or "").strip()
     if serial:
         data["serial_dup"] = _serial_dup_info(serial)
+    # 带出该试剂最近一次入库的单价作为默认，省得每次手填、也避免漏填成 0 元
+    reagent_id = data.get("reagent_id")
+    last_price = 0.0
+    if reagent_id:
+        last = (StockIn.query
+                .filter(StockIn.reagent_id == int(reagent_id), StockIn.status != 2,
+                        StockIn.unit_price.isnot(None))
+                .order_by(StockIn.id.desc()).first())
+        if last and last.unit_price:
+            last_price = float(last.unit_price)
+    data["last_price"] = last_price
     return jsonify(data)
 
 

@@ -641,6 +641,48 @@ def test_udi_scan_api_rejects_empty_code(client):
     assert client.get("/stock-in/udi?code=").status_code == 400
 
 
+def test_udi_scan_brings_last_unit_price(client, db_session, users, reagent):
+    """再次扫同一试剂时带出最近一次入库单价；作废单不参与（避免 0 元、避免沿用别的试剂）。"""
+    from app.models.udi import UdiProduct
+
+    db_session.session.add(UdiProduct(
+        di=DI, coding="GS1", name="葡萄糖(GLU)测定试剂盒", spec="R1 40ml×4",
+        mfr="测试厂家", reg_no="", cat="生化", source="test"))
+    db_session.session.commit()
+    _new_in(reagent, users["admin"], batch="B-OLD", price=128.5)
+    voided = _new_in(reagent, users["admin"], batch="B-VOID", price=999.0)
+    voided.status = 2                       # 已作废的单不能当作「上次单价」
+    db_session.session.commit()
+
+    data = client.get(f"/stock-in/udi?code=01{DI}1728123110B2601A").get_json()
+    assert data["reagent_id"] == reagent.id
+    assert data["last_price"] == pytest.approx(128.5)
+
+
+def test_reagent_modal_categories_keep_all_under_mfr_filter(client, db_session):
+    """按厂家筛选只收敛筛选区；编辑弹窗的分类下拉必须仍是全部分类。"""
+    import re
+
+    from app.models.reagent import Category, Reagent
+
+    c1 = Category(name="生化试剂类")
+    c2 = Category(name="免疫试剂类")
+    db_session.session.add_all([c1, c2])
+    db_session.session.commit()
+    db_session.session.add_all([
+        Reagent(name="甲厂家试剂", registrant="甲厂家", category_id=c1.id, pack_size=1),
+        Reagent(name="乙厂家试剂", registrant="乙厂家", category_id=c2.id, pack_size=1),
+    ])
+    db_session.session.commit()
+
+    html = client.get("/basic/reagent?mfr=甲厂家").get_data(as_text=True)
+    filt = re.search(r'id="filter_category".*?</select>', html, re.S).group(0)
+    modal = re.search(r'id="f_category".*?</select>', html, re.S).group(0)
+    assert "生化试剂类" in filt
+    assert "免疫试剂类" not in filt
+    assert "生化试剂类" in modal and "免疫试剂类" in modal
+
+
 def test_in_add_page_has_udi_scanner(client):
     html = client.get("/stock-in/add").get_data(as_text=True)
     assert 'id="udiInput"' in html

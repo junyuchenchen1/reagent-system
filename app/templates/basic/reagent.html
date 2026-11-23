@@ -7,7 +7,7 @@
     <div class="input-group" style="max-width:240px;">
         <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索试剂名称">
     </div>
-    <select class="form-select" name="category_id" style="max-width:160px;">
+    <select class="form-select" name="category_id" id="filter_category" style="max-width:160px;">
         <option value="">全部分类</option>
         {% for c in categories %}
         <option value="{{ c.id }}" {{ 'selected' if category_id == c.id|string }}>{{ c.name }}</option>
@@ -106,7 +106,7 @@
                         <div class="col-md-3 mb-3"><label class="form-label">所属分类</label>
                             <select class="form-select" name="category_id" id="f_category">
                                 <option value="">请选择</option>
-                                {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                                {% for c in all_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
                             </select></div>
                         <div class="col-md-3 mb-3"><label class="form-label">规格</label>
                             <input class="form-control" name="spec" id="f_spec" placeholder="如 R1 50ml×2"></div>
@@ -244,7 +244,9 @@
 
     // 分类 → 厂家 联动：选定分类后，厂家下拉只显示该分类下有试剂的厂家
     (function () {
-        const catSel = document.querySelector("select[name='category_id']");
+        // 只作用于筛选区（#filter_category / select[name='mfr']），
+        // 弹窗里的 #f_category 必须始终是全部分类
+        const catSel = document.getElementById('filter_category');
         const mfrSel = document.querySelector("select[name='mfr']");
         if (!catSel || !mfrSel) { return; }
         function applyMfrFilter() {
