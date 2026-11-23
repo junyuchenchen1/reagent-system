@@ -73,6 +73,7 @@
                         data-regexp="{{ r.reg_expire_date.strftime('%Y-%m-%d') if r.reg_expire_date else '' }}"
                         data-registrant="{{ r.registrant or '' }}"
                         data-agent="{{ r.agent or '' }}"
+                        data-dis="{{ (di_map.get(r.id) or [])|join(',') }}"
                         data-cert="{{ r.cert_image or '' }}"
                         data-remark="{{ r.remark }}" onclick="editItem(this)"><i class="bi bi-pencil"></i> 编辑</button>
                     <button class="btn btn-sm btn-light text-danger" onclick="confirmAction('{{ url_for('basic.reagent_delete') }}',{{ r.id }},'确定删除试剂「{{ r.name }}」吗？（存在库存时将无法删除）')"><i class="bi bi-trash"></i></button>
@@ -149,6 +150,10 @@
                             <input class="form-control" name="registrant" id="f_registrant" placeholder="如 迈瑞医疗（深圳）有限公司"></div>
                         <div class="col-md-5 mb-3"><label class="form-label">代理人（进口试剂填）</label>
                             <input class="form-control" name="agent" id="f_agent" placeholder="国产试剂可留空"></div>
+                        <div class="col-12 mb-3"><label class="form-label">UDI 产品标识（DI）</label>
+                            <input class="form-control" name="udi_di_new" id="f_di_new"
+                                placeholder="扫码枪直接扫盒码，或手输 14 位数字">
+                            <div class="form-text" id="diHint"></div></div>
                         <div class="col-md-7 mb-3"><label class="form-label">注册证图片（PNG/JPG）</label>
                             <input type="file" class="form-control" name="cert_image" accept=".png,.jpg,.jpeg,.bmp">
                             <div class="form-text" id="certHint"></div></div>
@@ -188,6 +193,8 @@
         document.getElementById('f_regexp').value = '';
         document.getElementById('f_registrant').value = '';
         document.getElementById('f_agent').value = '';
+        document.getElementById('f_di_new').value = '';
+        document.getElementById('diHint').textContent = '还没有绑定产品标识，扫一次盒码即可。';
         document.getElementById('certHint').innerHTML = '';
         document.getElementById('modalTitle').textContent = '新增试剂';
         updateMinHint();
@@ -212,6 +219,11 @@
         document.getElementById('f_regexp').value = d.regexp || '';
         document.getElementById('f_registrant').value = d.registrant || '';
         document.getElementById('f_agent').value = d.agent || '';
+        const dis = (d.dis || '').split(',').filter(Boolean);
+        document.getElementById('f_di_new').value = '';
+        document.getElementById('diHint').textContent = dis.length
+            ? '已绑定：' + dis.join('、') + '（再扫一次可追加别的规格）'
+            : '还没有绑定产品标识，扫一次盒码即可。';
         document.getElementById('certHint').innerHTML = d.cert
             ? '<a href="/basic/cert/' + d.cert + '" target="_blank"><i class="bi bi-image"></i> 查看已上传的注册证图片</a>（重新上传将覆盖）'
             : '';

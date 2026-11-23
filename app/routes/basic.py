@@ -12,6 +12,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.models.reagent import Category, Supplier, Reagent, StorageLocation
 from app.models.stock import (StockIn, Inventory, StockOut, ReagentPack, PackUse)
+from app.models.udi import UdiProduct
 from app.services import udi_service
 from app.utils.permission import manager_required
 from app.utils.common import log_operation
@@ -312,12 +313,18 @@ def reagent_list():
     # 厂家下拉给出全集，由 data-cats + 前端联动决定可见范围（服务端仍按 category_id 过滤列表）
     manufacturers = all_manufacturers
     mfr_cat_map = {k: sorted(v) for k, v in mfr_cat_map.items()}
+    # 每条试剂已绑定的产品标识（DI），供编辑弹窗显示与追加
+    di_map = {}
+    for di, rid in db.session.query(UdiProduct.di, UdiProduct.reagent_id).filter(
+            UdiProduct.reagent_id != None).all():
+        di_map.setdefault(rid, []).append(di)
     # 分类下拉一律给全量，筛选区「分类↔厂家」的收敛交给前端双向联动，
     # 这样选厂家时分类也会跟着收敛，而不是只有选分类才收敛厂家
     return render_template("basic/reagent.html", items=items,
                            categories=all_categories, all_categories=all_categories,
                            manufacturers=manufacturers,
                            mfr_cat_map=mfr_cat_map,
+                           di_map=di_map,
                            keyword=keyword, category_id=category_id, mfr=mfr,
                            prefill=_udi_prefill())
 
@@ -377,6 +384,22 @@ def reagent_save():
         udi_service.bind_reagent(udi_di, obj.id)
         flash("已保存，并记住该产品标识；下面是入库页，已自动重新识别这条试剂。", "success")
         return redirect(url_for("stock_in.in_add", udi=(udi_code or udi_di)))
+
+    # 手工补录产品标识：老档案后来才有盒码，扫一次码或手输 DI 即绑定，下次扫码自动选中
+    added, skipped = [], []
+    for raw in re.split(r"[,，、;；\s]+", request.form.get("udi_di_new", "") or ""):
+        di, err = udi_service.normalize_di(raw)
+        if not raw.strip():
+            continue
+        if di:
+            udi_service.bind_reagent(di, obj.id)
+            added.append(di)
+        else:
+            skipped.append(f"「{raw.strip()}」（{err}）")
+    if added:
+        flash("已记住产品标识：" + "、".join(added) + "，以后扫到这盒试剂会自动对上本档案。", "success")
+    if skipped:
+        flash("以下没记：" + "；".join(skipped), "warning")
 
     flash("保存成功", "success")
     return redirect(url_for("basic.reagent_list"))

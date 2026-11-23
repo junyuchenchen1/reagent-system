@@ -823,6 +823,41 @@ def test_reagent_save_with_udi_binds_and_returns_to_stock_in(client, db_session)
     assert db_session.session.get(UdiProduct, DI).reagent_id == new.id
 
 
+def test_reagent_backfill_di_binds_existing_archive(client, db_session, users, reagent):
+    """手工建的老档案后来才有盒码：编辑时补录 DI（或整段码）即绑定，错误输入不绑。"""
+    from app.models.udi import UdiProduct
+
+    # 整段盒码（支原体）→ 解析出 DI 并绑定到已有档案
+    resp = client.post("/basic/reagent/save", data={
+        "id": reagent.id, "name": reagent.name, "unit": "盒", "pack_size": 12,
+        "small_unit": "瓶", "min_stock": 1, "min_stock_unit": "pack",
+        "status": "on", "csrf_token": "test-token",
+        "udi_di_new": "01069722358405741126090117270831102026090121477",
+    })
+    assert resp.status_code == 302
+    assert db_session.session.get(UdiProduct, "06972235840574").reagent_id == reagent.id
+
+    # 校验位错的 GTIN 不绑定
+    client.post("/basic/reagent/save", data={
+        "id": reagent.id, "name": reagent.name, "unit": "盒", "pack_size": 12,
+        "small_unit": "瓶", "min_stock": 1, "min_stock_unit": "pack",
+        "status": "on", "csrf_token": "test-token",
+        "udi_di_new": "17280430240108",
+    })
+    assert db_session.session.get(UdiProduct, "17280430240108") is None
+
+
+def test_reagent_list_shows_bound_di(client, db_session, users, reagent):
+    """档案列表的编辑按钮带上已绑定的 DI，弹窗才能显示“已绑定”。"""
+    from app.services import udi_service
+
+    udi_service.bind_reagent("06972235840574", reagent.id)
+    resp = client.get("/basic/reagent")
+    html = resp.get_data(as_text=True)
+    assert 'data-dis="06972235840574"' in html
+    assert 'id="f_di_new"' in html
+
+
 def test_udi_import_filters_non_ivd(db_session, tmp_path):
     """导入器只保留检验试剂类产品，耗材/设备不进库。"""
     import zipfile

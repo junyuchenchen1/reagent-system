@@ -37,7 +37,7 @@ IVD_KEYWORDS = ("试剂", "校准品", "质控品", "抗体", "染色液", "溶�
 IVD_KEYWORDS += ("稀释液", "清洗液", "鞘液", "定标液", "校准液", "缓冲液",
                  "保存液", "底物", "质控液", "参考品", "对照品", "检测盒",
                  "测定盒", "血型", "抗A", "抗B", "血清", "酶标", "标本",
-                 "采样", "溶血", "参比液", "洗液", "内标液", "检测卡")
+                 "采样", "溶血", "参比液", "洗液", "内标液", "检测卡", "反应杯")
 
 # 名字里出现这些的，基本不是检验试剂（隐形眼镜护理液、输液器、口罩等），先排除再加关键词
 IVD_EXCLUDE = ("隐形眼镜", "护理液", "润眼", "润滑", "输液", "注射", "敷料", "口腔", "鼻腔", "耳道", "家用", "美容", "减肥")
@@ -450,6 +450,34 @@ def bind_reagent(di: str, reagent_id) -> None:
         db.session.add(product)
     product.reagent_id = int(reagent_id)
     db.session.commit()
+
+
+def bound_dis(reagent_id) -> list:
+    """该试剂档案已经绑定了哪些产品标识（DI），用于档案页展示。"""
+    if not reagent_id:
+        return []
+    rows = (UdiProduct.query.filter_by(reagent_id=int(reagent_id))
+            .order_by(UdiProduct.di).all())
+    return [r.di for r in rows]
+
+
+def normalize_di(raw: str):
+    """把手工输入的 DI 或整段盒码规整成产品标识，返回 (di, 错误说明)。"""
+    s = (raw or "").strip()
+    if not s:
+        return None, ""
+    if len(s) > 20:                                  # 整段 DM 码 → 先解析出 DI
+        s = parse_dm(s).get("di") or ""
+        if not s:
+            return None, "这串码里没解析出产品标识"
+    if not s.isdigit():
+        return None, "产品标识应该是数字"
+    if len(s) not in (12, 13, 14, 16, 18, 20):
+        return None, "产品标识位数不对"
+    if len(s) == 14 and not _gtin_check_ok(s):
+        return None, "GTIN 校验位不对，可能扫错了"
+    return s, ""
+
 
 
 def resolve(raw_code: str) -> dict:
