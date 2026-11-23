@@ -89,8 +89,16 @@
     </div>
 </div>
 
+<style>
+    /* 编辑弹窗紧凑排版：一屏放下，不用下拉就能点到保存 */
+    #editModal .modal-body { padding: .8rem 1rem .2rem; }
+    #editModal .modal-header, #editModal .modal-footer { padding: .5rem 1rem; }
+    #editModal .form-label { margin-bottom: .1rem; font-size: .8rem; }
+    #editModal .form-text { font-size: .72rem; margin-top: .1rem; line-height: 1.2; }
+    #editModal .form-check-label { font-size: .85rem; }
+</style>
 <div class="modal fade" id="editModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content">
             <form method="post" action="{{ url_for('basic.reagent_save') }}" enctype="multipart/form-data">
                 <div class="modal-header">
@@ -101,69 +109,84 @@
                     <input type="hidden" name="id" id="f_id">
                     <input type="hidden" name="udi_di" id="f_udi" value="">
                     <input type="hidden" name="udi" id="f_udi_code" value="">
-                    <div class="row">
-                        <div class="col-md-6 mb-3"><label class="form-label required">试剂名称</label>
-                            <input class="form-control" name="name" id="f_name" required></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">所属分类</label>
-                            <select class="form-select" name="category_id" id="f_category">
-                                <option value="">请选择</option>
-                                {% for c in all_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-                            </select></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">规格</label>
-                            <input class="form-control" name="spec" id="f_spec" placeholder="如 R1 50ml×2"></div>
-                        <div class="col-md-2 mb-3"><label class="form-label">大包装单位</label>
-                            <input class="form-control" name="unit" id="f_unit" value="盒" placeholder="盒/箱/袋/桶/包"></div>
-                        <div class="col-md-2 mb-3"><label class="form-label required">每包装数量</label>
-                            <input type="number" min="1" class="form-control" name="pack_size" id="f_packsize" value="1" required></div>
-                        <div class="col-md-2 mb-3"><label class="form-label">最小单位</label>
-                            <input class="form-control" name="small_unit" id="f_smallunit" value="瓶" placeholder="瓶/支/个/ml"></div>
-                        <div class="col-md-2 mb-3"><label class="form-label">最低库存</label>
-                            <input type="number" min="0" class="form-control" name="min_stock" id="f_min" value="10"></div>
-                        <div class="col-md-2 mb-3"><label class="form-label">预警按哪种单位</label>
-                            <select class="form-select" name="min_stock_unit" id="f_minunit" onchange="updateMinHint()">
-                                <option value="pack">按大包装</option>
-                                <option value="unit">按最小单位</option>
-                            </select></div>
-                        <div class="col-md-2 mb-3"><label class="form-label">效期预警(天)</label>
-                            <input type="number" class="form-control" name="expire_warning_days" id="f_warning" value="90"></div>
-                        <div class="col-12 mb-2"><div class="form-text" id="minHint"></div></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">存储条件</label>
-                            <select class="form-select" name="storage_condition" id="f_storage">
-                                {% for s in ['常温','冷藏','冷冻'] %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-                            </select></div>
-                        <div class="col-md-6 mb-3 d-flex align-items-end gap-4">
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" name="is_hazard" value="1" id="f_hazard">
-                                <label class="form-check-label" for="f_hazard">危险试剂</label>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="mb-2"><label class="form-label required">试剂名称</label>
+                                <input class="form-control form-control-sm" name="name" id="f_name" required></div>
+                            <div class="row g-2">
+                                <div class="col-6 mb-2"><label class="form-label">所属分类</label>
+                                    <select class="form-select form-select-sm" name="category_id" id="f_category">
+                                        <option value="">请选择</option>
+                                        {% for c in all_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                                    </select></div>
+                                <div class="col-6 mb-2"><label class="form-label">规格</label>
+                                    <input class="form-control form-control-sm" name="spec" id="f_spec" placeholder="如 R1 50ml×2"></div>
                             </div>
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" name="status" value="1" id="f_status" checked>
-                                <label class="form-check-label" for="f_status">启用</label>
+                            <div class="row g-2">
+                                <div class="col-3 mb-2"><label class="form-label">大包装单位</label>
+                                    <input class="form-control form-control-sm" name="unit" id="f_unit" value="盒" placeholder="盒/箱"></div>
+                                <div class="col-3 mb-2"><label class="form-label required">每包装数量</label>
+                                    <input type="number" min="1" class="form-control form-control-sm" name="pack_size" id="f_packsize" value="1" required></div>
+                                <div class="col-3 mb-2"><label class="form-label">最小单位</label>
+                                    <input class="form-control form-control-sm" name="small_unit" id="f_smallunit" value="瓶" placeholder="瓶/支"></div>
+                                <div class="col-3 mb-2"><label class="form-label">最低库存</label>
+                                    <input type="number" min="0" class="form-control form-control-sm" name="min_stock" id="f_min" value="10"></div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6 mb-2"><label class="form-label">预警按哪种单位</label>
+                                    <select class="form-select form-select-sm" name="min_stock_unit" id="f_minunit" onchange="updateMinHint()">
+                                        <option value="pack">按大包装</option>
+                                        <option value="unit">按最小单位</option>
+                                    </select></div>
+                                <div class="col-6 mb-2"><label class="form-label">效期预警(天)</label>
+                                    <input type="number" class="form-control form-control-sm" name="expire_warning_days" id="f_warning" value="90"></div>
+                            </div>
+                            <div class="mb-2"><div class="form-text" id="minHint"></div></div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-4 mb-2"><label class="form-label">存储条件</label>
+                                    <select class="form-select form-select-sm" name="storage_condition" id="f_storage">
+                                        {% for s in ['常温','冷藏','冷冻'] %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                                    </select></div>
+                                <div class="col-8 mb-2 d-flex gap-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" name="is_hazard" value="1" id="f_hazard">
+                                        <label class="form-check-label" for="f_hazard">危险试剂</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" name="status" value="1" id="f_status" checked>
+                                        <label class="form-check-label" for="f_status">启用</label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <hr>
-                        <div class="col-md-4 mb-3"><label class="form-label">医疗器械注册证编号</label>
-                            <input class="form-control" name="reg_no" id="f_regno" placeholder="如 国械注准20243400123"></div>
-                        <div class="col-md-3 mb-3"><label class="form-label">注册证有效期</label>
-                            <input type="date" class="form-control" name="reg_expire_date" id="f_regexp"></div>
-                        <div class="col-md-5 mb-3"><label class="form-label">注册人 / 生产企业</label>
-                            <input class="form-control" name="registrant" id="f_registrant" placeholder="如 迈瑞医疗（深圳）有限公司"></div>
-                        <div class="col-md-5 mb-3"><label class="form-label">代理人（进口试剂填）</label>
-                            <input class="form-control" name="agent" id="f_agent" placeholder="国产试剂可留空"></div>
-                        <div class="col-12 mb-3"><label class="form-label">UDI 产品标识（DI）</label>
-                            <input class="form-control" name="udi_di_new" id="f_di_new"
-                                placeholder="扫码枪直接扫盒码，或手输 14 位数字">
-                            <div class="form-text" id="diHint"></div></div>
-                        <div class="col-md-7 mb-3"><label class="form-label">注册证图片（PNG/JPG）</label>
-                            <input type="file" class="form-control" name="cert_image" accept=".png,.jpg,.jpeg,.bmp">
-                            <div class="form-text" id="certHint"></div></div>
-                        <div class="col-12 mb-3"><label class="form-label">备注</label>
-                            <textarea class="form-control" name="remark" id="f_remark" rows="2"></textarea></div>
+                        <div class="col-md-6">
+                            <div class="row g-2">
+                                <div class="col-7 mb-2"><label class="form-label">医疗器械注册证编号</label>
+                                    <input class="form-control form-control-sm" name="reg_no" id="f_regno" placeholder="如 国械注准20243400123"></div>
+                                <div class="col-5 mb-2"><label class="form-label">注册证有效期</label>
+                                    <input type="date" class="form-control form-control-sm" name="reg_expire_date" id="f_regexp"></div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-7 mb-2"><label class="form-label">注册人 / 生产企业</label>
+                                    <input class="form-control form-control-sm" name="registrant" id="f_registrant" placeholder="如 迈瑞医疗"></div>
+                                <div class="col-5 mb-2"><label class="form-label">代理人（进口试剂填）</label>
+                                    <input class="form-control form-control-sm" name="agent" id="f_agent" placeholder="国产可留空"></div>
+                            </div>
+                            <div class="mb-2"><label class="form-label">UDI 产品标识（DI）</label>
+                                <input class="form-control form-control-sm" name="udi_di_new" id="f_di_new"
+                                    placeholder="扫码枪直接扫盒码，或手输 14 位数字">
+                                <div class="form-text" id="diHint"></div></div>
+                            <div class="mb-2"><label class="form-label">注册证图片（PNG/JPG）</label>
+                                <input type="file" class="form-control form-control-sm" name="cert_image" accept=".png,.jpg,.jpeg,.bmp">
+                                <div class="form-text" id="certHint"></div></div>
+                            <div class="mb-1"><label class="form-label">备注</label>
+                                <textarea class="form-control form-control-sm" name="remark" id="f_remark" rows="2"></textarea></div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">保存</button>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary btn-sm">保存</button>
                 </div>
             </form>
         </div>
