@@ -93,6 +93,105 @@ def _next_ai_start(code: str, i: int) -> int:
     return strong
 
 
+_CONSUME_MAX_DEPTH = 8
+
+
+def _consume_ai(code: str, i: int, depth: int = 0):
+    """把 code[i:] 恰好解释成一串 GS1 AI（不允许残留杂字符），成功返回字段 dict。
+
+    这是给“批号切点反推”用的严格解析：只有从 i 到码尾每一段都能对上 AI，
+    才算这个切点成立。变长字段（10/21/240）会有多个可行长度，这里不取第一个，
+    而是挑“后续能解析出日期、且自己取值最短”的那个——否则 240 会把后面的
+    (11) 日期连值一起吞掉（真实罗氏码 extra 被截成 10820652、序列号变成 611251120）。
+    失败返回 None。
+    """
+    n = len(code)
+    if i >= n:
+        return {}
+    if depth > _CONSUME_MAX_DEPTH:
+        return None
+    if code[i:i + 3] == "240":                      # (240) 附加产品标识，值 5~30 位
+        best = None
+        for end in range(i + 8, min(n, i + 33) + 1):
+            sub = _consume_ai(code, end, depth + 1)
+            if sub is None:
+                continue
+            cand = {"extra": code[i + 3:end]}
+            cand.update(sub)
+            key = (1 if (sub.get("expire_date") or sub.get("produce_date")) else 0,
+                   -len(cand["extra"]))
+            if best is None or key > best[0]:
+                best = (key, cand)
+        return best[1] if best else None
+    ai = code[i:i + 2]
+    fixed = _FIXED_AI.get(ai)
+    if fixed:
+        val = code[i + 2:i + 2 + fixed]
+        if len(val) != fixed:
+            return None
+        if ai == "01":
+            if not val.isdigit():
+                return None
+            head = {"di": val}
+        elif ai == "30":
+            if not val.isdigit():
+                return None
+            head = {"qty": val.lstrip("0") or "0"}
+        else:
+            d = _gs1_date(val)
+            if not d:
+                return None
+            head = {("expire_date" if ai == "17" else "produce_date"): d}
+        sub = _consume_ai(code, i + 2 + fixed, depth + 1)
+        if sub is None:
+            return None
+        head.update(sub)
+        return head
+    if ai in ("10", "21"):                          # 变长字段，值至少 5 位
+        best = None
+        for end in range(i + 7, n + 1):
+            sub = _consume_ai(code, end, depth + 1)
+            if sub is None:
+                continue
+            val = code[i + 2:end]
+            cand = {("batch_no" if ai == "10" else "serial"): val}
+            cand.update(sub)
+            key = (1 if (sub.get("expire_date") or sub.get("produce_date")) else 0,
+                   -len(val))
+            if best is None or key > best[0]:
+                best = (key, cand)
+        return best[1] if best else None
+    return None
+
+
+def _split_batch_by_ai(seg: str):
+    """批号段没有 (21) 序列号时，用“剩余必须能完整解析成 AI 串”反推批号切点。
+
+    真实罗氏电解液码 …(10)93575501(17)280430(240)10820652216(11)251120：
+    `93575501` 里的 `01` 后面恰好跟 14 位数字，旧的做法（从左找第一个可信 AI）
+    会把批号截成 `935755`，还从后面刮出个假序列号 `6`、丢掉有效期和商品号。
+    这里改为枚举批号长度 k=4~24：只有 k=8 能让剩余
+    `17 280430 240 10820652216 11 251120` 一路解析到码尾。
+    有多个解时优先“能解析出日期”的那个（信息最实），再取最长批号。
+    返回 (批号, 后续字段) 或 (None, None)。
+    """
+    cands = []
+    for k in range(4, min(len(seg), 24) + 1):
+        rest = _consume_ai(seg, k)
+        if rest is not None:
+            cands.append((k, rest))
+    if not cands:
+        return None, None
+
+    def _score(item):
+        k, rest = item
+        dates = sum(1 for key in ("expire_date", "produce_date") if rest.get(key))
+        return (dates, len(rest), -k)      # 日期越多、字段越全、批号越短越可信
+
+    k, rest = max(cands, key=_score)
+    return seg[:k], rest
+
+
 def _split_batch_serial(seg: str):
     """无 GS 分隔符时，批号（AI 10）后面常直接跟序列号（AI 21），要切开。
 
@@ -138,6 +237,10 @@ def parse_dm(raw: str) -> dict:
             .replace("\r", "").replace("\n", ""))
     code = code.replace("(", "").replace(")", "")   # 人可读括号格式 (01)…
     code = code.replace(" ", "|")                   # GS1 码内不会有空格，出现即当作分隔符
+    # GS1 符号标识前缀（扫描枪按 GS1-128 模式输出时会带 ]C1，DataMatrix 常是 ]d2）：
+    # 不去掉的话 "]C1" 里的 "10" 会被当成 AI 10，批号直接从 DI 开始读。
+    if re.match(r"^\]\w\d", code):
+        code = code[3:]
 
     if code.isdigit() and len(code) == 14:          # 只扫到 DI 本身
         return {"di": code}
@@ -179,6 +282,16 @@ def parse_dm(raw: str) -> dict:
                     if serial:
                         result["batch_no"] = head
                         result.setdefault("serial", serial)
+                        i = n
+                        continue
+                    # 没有序列号：改用“剩余必须完整解析成 AI 串”反推批号切点。
+                    # 旧做法从左找第一个可信 AI，遇到批号里 `01`+14 位数字
+                    # （罗氏罗氏电解液 93575501 + 17280430…）就会把批号截短。
+                    head, rest = _split_batch_by_ai(code[i:])
+                    if rest is not None:
+                        result["batch_no"] = head
+                        for key, val in rest.items():
+                            result.setdefault(key, val)
                         i = n
                         continue
                 end = _next_ai_start(code, i)

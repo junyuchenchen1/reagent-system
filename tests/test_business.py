@@ -602,6 +602,19 @@ def test_parse_dm_ai240_not_swallowed_by_batch():
     assert d["expire_date"].isoformat() == "2027-05-15"
 
 
+def test_parse_dm_batch_with_ai_like_digits_backtracking():
+    """真实罗氏电解液码：批号 93575501 里的 "01"+14 位数字不能被当成 GTIN。"""
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm("01040156309102811093575501172804302401082065221611251120")
+    assert d["di"] == "04015630910281"
+    assert d["batch_no"] == "93575501"
+    assert d["produce_date"].isoformat() == "2025-11-20"
+    assert d["expire_date"].isoformat() == "2028-04-30"
+    assert d.get("extra") == "10820652216"
+    assert "serial" not in d
+
+
 def test_parse_dm_only_di():
     from app.services.udi_service import parse_dm
 
