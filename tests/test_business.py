@@ -589,6 +589,19 @@ def test_parse_dm_batch_before_expire_without_gs():
     assert d["expire_date"].isoformat() == "2028-12-31"
 
 
+def test_parse_dm_ai240_not_swallowed_by_batch():
+    """真实管路清洗液码：批号后面直接跟 (240) 附加产品标识，批号不能被它污染。"""
+    from app.services.udi_service import parse_dm
+
+    d = parse_dm("0106947145500207112605151727051510305260501240130299007M")
+    assert d["di"] == "06947145500207"
+    assert d["batch_no"] == "305260501"
+    assert d.get("extra") == "130299007M"
+    assert "serial" not in d
+    assert d["produce_date"].isoformat() == "2026-05-15"
+    assert d["expire_date"].isoformat() == "2027-05-15"
+
+
 def test_parse_dm_only_di():
     from app.services.udi_service import parse_dm
 

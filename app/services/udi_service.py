@@ -80,7 +80,16 @@ def _next_ai_start(code: str, i: int) -> int:
     if m30:
         tail30 = i + m30.start()
     if tail30 is not None:
-        return min(strong, tail30)
+        strong = min(strong, tail30)
+    # AI 240（附加产品标识）也是变长字段，且常直接跟在批号后面：
+    #   管路清洗液真实码 …(10)305260501(240)130299007M（无 GS）
+    # 不认它，整段 "305260501240130299007M" 就会被当成批号。
+    # 保守起见只认“240 + 6~30 位字母数字一直到码尾”，且 240 前面已经有
+    # ≥4 位批号内容（避免批号内部像 AB240… 的片段被误切）。
+    for m in re.finditer(r"240([0-9A-Za-z]{6,30})$", code[i:]):
+        p = i + m.start()
+        if p - i >= 4:
+            strong = min(strong, p)
     return strong
 
 
@@ -138,11 +147,11 @@ def parse_dm(raw: str) -> dict:
         if code[i] == "|":
             i += 1
             continue
-        ai = code[i:i + 2]
+        ai = code[i:i + 3] if code[i:i + 3] == "240" else code[i:i + 2]
         if ai not in _ALL_AI:
             i += 1
             continue
-        i += 2
+        i += len(ai)
         if ai in _FIXED_AI:
             val = code[i:i + _FIXED_AI[ai]]
             i += _FIXED_AI[ai]
@@ -300,6 +309,7 @@ def resolve(raw_code: str) -> dict:
             "produce_date": (parsed.get("produce_date").isoformat()
                              if parsed.get("produce_date") else None),
             "serial": parsed.get("serial"),
+            "extra": parsed.get("extra"),          # (240) 附加产品标识（商品号），不入库
         },
         "product": product.to_dict() if product else None,
         "reagent_id": reagent_id,
