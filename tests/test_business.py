@@ -1020,6 +1020,22 @@ def test_parse_dm_no_serial_with_11_right_after_batch():
     assert p["expire_date"].isoformat() == "2027-10-09"
 
 
+def test_parse_dm_short_serial_is_split_from_batch():
+    """真实基蛋降钙素原盒码：序列号只有 7 位（H000362），不能被并进批号。
+
+    标签：(01)06954414706512 (11)260601 (17)271201 (10)P01826044 (21)H000362
+    旧实现要求 21 后至少 8 位，会把 P0182604421H000362 整段当批号、序列号丢失。
+    """
+    from app.services.udi_service import parse_dm
+
+    p = parse_dm("0106954414706512112606011727120110P0182604421H000362")
+    assert p["di"] == "06954414706512"
+    assert p["batch_no"] == "P01826044"
+    assert p["serial"] == "H000362"
+    assert p["produce_date"].isoformat() == "2026-06-01"
+    assert p["expire_date"].isoformat() == "2027-12-01"
+
+
 def test_in_add_page_has_serial_and_produce_fields(client):
     """入库页要有序列号、生产日期两个非必填框；批号、有效期仍是必填。"""
     html = client.get("/stock-in/add").get_data(as_text=True)
