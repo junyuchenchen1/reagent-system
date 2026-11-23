@@ -660,7 +660,7 @@ def test_udi_scan_brings_last_unit_price(client, db_session, users, reagent):
 
 
 def test_reagent_modal_categories_keep_all_under_mfr_filter(client, db_session):
-    """按厂家筛选只收敛筛选区；编辑弹窗的分类下拉必须仍是全部分类。"""
+    """厂家筛选不再裁分类选项；分类下拉全量，收敛交给前端双向联动。"""
     import re
 
     from app.models.reagent import Category, Reagent
@@ -678,9 +678,12 @@ def test_reagent_modal_categories_keep_all_under_mfr_filter(client, db_session):
     html = client.get("/basic/reagent?mfr=甲厂家").get_data(as_text=True)
     filt = re.search(r'id="filter_category".*?</select>', html, re.S).group(0)
     modal = re.search(r'id="f_category".*?</select>', html, re.S).group(0)
-    assert "生化试剂类" in filt
-    assert "免疫试剂类" not in filt
-    assert "生化试剂类" in modal and "免疫试剂类" in modal
+    # 筛选区和编辑弹窗都保留全部分类，具体可见范围由前端联动决定
+    for block in (filt, modal):
+        assert "生化试剂类" in block and "免疫试剂类" in block
+    # 双向联动：选分类收敛厂家（applyMfrFilter）、选厂家收敛分类（applyCatFilter）
+    assert "applyMfrFilter" in html and "applyCatFilter" in html
+    assert "mfrSel.addEventListener('change', applyCatFilter)" in html
 
 
 def test_in_add_page_has_udi_scanner(client):

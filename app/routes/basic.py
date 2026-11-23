@@ -312,15 +312,10 @@ def reagent_list():
     # 厂家下拉给出全集，由 data-cats + 前端联动决定可见范围（服务端仍按 category_id 过滤列表）
     manufacturers = all_manufacturers
     mfr_cat_map = {k: sorted(v) for k, v in mfr_cat_map.items()}
-    cat_query = db.session.query(Reagent.category_id).filter(Reagent.category_id != None)
-    if mfr:
-        cat_query = cat_query.filter(Reagent.registrant == mfr)
-        valid_cat_ids = set(r[0] for r in cat_query.distinct().all())
-        filtered_categories = [c for c in categories if c.id in valid_cat_ids]
-    else:
-        filtered_categories = categories
+    # 分类下拉一律给全量，筛选区「分类↔厂家」的收敛交给前端双向联动，
+    # 这样选厂家时分类也会跟着收敛，而不是只有选分类才收敛厂家
     return render_template("basic/reagent.html", items=items,
-                           categories=filtered_categories, all_categories=all_categories,
+                           categories=all_categories, all_categories=all_categories,
                            manufacturers=manufacturers,
                            mfr_cat_map=mfr_cat_map,
                            keyword=keyword, category_id=category_id, mfr=mfr,

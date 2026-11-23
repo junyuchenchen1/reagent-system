@@ -242,7 +242,7 @@
         if (el) { el.addEventListener('input', updateMinHint); }
     });
 
-    // 分类 → 厂家 联动：选定分类后，厂家下拉只显示该分类下有试剂的厂家
+    // 筛选区双向联动：选分类 → 厂家只留该分类下的；选厂家 → 分类只留该厂家有的
     (function () {
         // 只作用于筛选区（#filter_category / select[name='mfr']），
         // 弹窗里的 #f_category 必须始终是全部分类
@@ -277,8 +277,26 @@
                 mfrSel.appendChild(tip);
             }
         }
+        function applyCatFilter() {
+            const mfrOpt = mfrSel.options[mfrSel.selectedIndex];
+            const cats = (mfrSel.value && mfrOpt ? (mfrOpt.dataset.cats || '') : '')
+                .split(',').filter(Boolean);
+            const keep = catSel.value;
+            let keepValid = false;
+            Array.prototype.forEach.call(catSel.options, function (opt) {
+                if (!opt.value) { return; }          // “全部分类”始终可选
+                const matched = !cats.length || cats.indexOf(opt.value) >= 0;
+                opt.hidden = !matched;
+                opt.disabled = !matched;
+                if (matched && opt.value === keep) { keepValid = true; }
+            });
+            // 已选分类不属于新厂家时自动回到“全部分类”
+            if (keep && !keepValid) { catSel.value = ''; }
+        }
         catSel.addEventListener('change', applyMfrFilter);
+        mfrSel.addEventListener('change', applyCatFilter);
         applyMfrFilter();
+        applyCatFilter();
     })();
 
     // 从入库页扫码跳过来：自动打新增弹窗并带上 UDI 信息（保存后自动回到入库页）
