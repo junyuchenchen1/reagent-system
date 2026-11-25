@@ -1400,8 +1400,8 @@ def test_in_export_and_detail_include_serial(client, db_session, users, reagent)
     wb = load_workbook(io.BytesIO(resp.data))
     ws = wb.active
     headers = [c.value for c in ws[1]]
-    assert "序列号(UDI 21)" in headers
+    assert "序列号" in headers
     assert "生产日期" in headers
-    col = headers.index("序列号(UDI 21)")
+    col = headers.index("序列号")
     values = [ws.cell(row=i, column=col + 1).value for i in range(2, ws.max_row + 1)]
     assert "31012305014743" in values

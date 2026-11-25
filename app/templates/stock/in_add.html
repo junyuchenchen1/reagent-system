@@ -331,6 +331,7 @@
                 serialInput.value = '';   // 取消勾选：清空序列号，恢复按批入库
                 clearDupWarn();
             }
+            saveDraft();                  // 勾选状态跟着草稿一起留住
         });
     }
     // 手动把序列号删空 = 这一盒不按序列号登记，解除重复锁定
@@ -356,6 +357,30 @@
     const pendingError = document.getElementById('pendingError');
     const CSRF_TOKEN = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
     let pending = [];
+    // 「＋ 新建试剂档案」要跳页，页面内存里的清单会全丢：落到 sessionStorage，
+    // 回来时原样恢复；「按序列号管理」的勾选一起存，否则回来会被重置成未勾选，
+    // 刚扫的序列号就认不出来了。
+    const DRAFT_KEY = 'reagent_stock_in_draft_v1';
+    function saveDraft() {
+        try {
+            sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+                pending: pending, serial: wantSerial(),
+            }));
+        } catch (e) { /* 浏览器禁用存储时忽略，不影响本页入库 */ }
+    }
+    function restoreDraft() {
+        let raw = null;
+        try { raw = sessionStorage.getItem(DRAFT_KEY); } catch (e) { return; }
+        if (!raw) { return; }
+        try {
+            const d = JSON.parse(raw) || {};
+            if (Array.isArray(d.pending)) { pending = d.pending; }
+            if (serialToggle) { serialToggle.checked = !!d.serial; }
+        } catch (e) { pending = []; }
+    }
+    function clearDraft() {
+        try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    }
     // 用户是否手动改过右侧「每盒单价」：只对紧接的那一次扫码生效，避免金额串到下一个试剂
     let priceTouched = false;
     (function () {
@@ -410,6 +435,7 @@
                 'style="width:96px" value="' + (it.unit_price ? it.unit_price : '') + '" placeholder="0">' +
                 '</div></div>';
         }).join('');
+        saveDraft();
     }
     function addPending(it) {
         const key = pendingKey(it);
@@ -430,6 +456,10 @@
         return true;
     }
 
+    // 从「新建试剂档案」回来：先把跳走前攒的清单和勾选状态恢复出来，再处理带回的码
+    restoreDraft();
+    if (pending.length) { renderPending(); }
+
     pendingList.addEventListener('click', function (e) {
         if (!e.target.closest('.js-del')) return;
         const i = parseInt(e.target.closest('[data-i]').dataset.i, 10);
@@ -444,6 +474,7 @@
             if (!(pv > 0)) { pv = 0; }
             pending[idx].unit_price = pv;
             priceInp.value = pv ? pv : '';
+            saveDraft();
             return;
         }
         const inp = e.target.closest('.js-qty');
@@ -453,10 +484,12 @@
         if (!v || v < 1) { v = 1; }
         pending[i].quantity = v;
         inp.value = v;
+        saveDraft();
     });
     pendingClear.addEventListener('click', function () {
         pending = [];
         pendingError.innerHTML = '';
+        clearDraft();
         renderPending();
     });
 
@@ -498,6 +531,8 @@
         }).then(function (r) { return r.json(); })
           .then(function (d) {
               if (d && d.ok) {
+                  clearDraft();                 // 已入库，草稿清掉，下次进页面不会带出旧清单
+                  pending = [];
                   if (d.labels_url) { window.location.href = d.labels_url; return; }
                   window.location.href = '{{ url_for("stock_in.in_list") }}';
                   return;
@@ -769,7 +804,20 @@
     const UDI_AUTO = {{ (udi_code or '')|tojson }};
     if (UDI_AUTO) {
         handleUdi(UDI_AUTO);
+        // 识别完就把地址栏上的码去掉：否则刷新一次页面又会自动加一条
+        // （按批号入库的条目会变成数量 +1）
+        try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('udi');
+            history.replaceState(null, '', u.pathname + u.search);
+        } catch (e) {}
     }
+
+    // 提交成功后跳到标签打印/列表页，用户按浏览器「返回」时浏览器会直接还原提交前的
+    // 页面快照，旧清单还留在内存里，再点一次就重复入库：强制重载，以草稿为准
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) { window.location.reload(); }
+    });
 </script>
 {% endblock %}
 
