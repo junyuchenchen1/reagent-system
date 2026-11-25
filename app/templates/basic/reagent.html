@@ -14,7 +14,7 @@
         <option value="{{ c.id }}" {{ 'selected' if category_id == c.id|string }}>{{ c.name }}</option>
         {% endfor %}
     </select>
-    <select class="form-select" name="mfr" style="max-width:200px;">
+    <select class="form-select" name="mfr" style="max-width:420px;min-width:260px;" title="{{ mfr }}">
         <option value="">全部厂家</option>
         {% for m in manufacturers %}
         <option value="{{ m }}" data-cats="{{ mfr_cat_map.get(m, [])|join(',') }}"
@@ -23,9 +23,9 @@
         {% endfor %}
     </select>
     <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
-    <a class="btn btn-light" href="{{ url_for('basic.reagent_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    <a class="btn btn-light ms-auto" href="{{ url_for('basic.reagent_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
     {% if current_user.is_manager %}
-    <button type="button" class="btn btn-success ms-auto" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增试剂</button>
+    <button type="button" class="btn btn-success" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增试剂</button>
     {% endif %}
 </form>
 
@@ -359,7 +359,11 @@
             if (keep && !keepValid) { catSel.value = ''; }
         }
         catSel.addEventListener('change', applyMfrFilter);
-        mfrSel.addEventListener('change', applyCatFilter);
+        mfrSel.addEventListener('change', function () {
+            // 厂家名很长时下拉框里只显示一截，悬停看完整名字
+            mfrSel.title = mfrSel.value ? mfrSel.options[mfrSel.selectedIndex].text : '';
+            applyCatFilter();
+        });
         applyMfrFilter();
         applyCatFilter();
     })();
