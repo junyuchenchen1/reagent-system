@@ -14,6 +14,7 @@ from app.models.reagent import Category, Supplier, Reagent, StorageLocation
 from app.models.stock import (StockIn, Inventory, StockOut, ReagentPack, PackUse)
 from app.models.udi import UdiProduct
 from app.services import udi_service
+from app.utils.paging import paginate_query
 from app.utils.permission import manager_required
 from app.utils.common import log_operation
 
@@ -299,7 +300,9 @@ def reagent_list():
         query = query.filter(Reagent.category_id == int(category_id))
     if mfr:
         query = query.filter(Reagent.registrant == mfr)
-    items = query.options(selectinload(Reagent.packs)).order_by(Reagent.id.desc()).all()
+    pagination = paginate_query(
+        query.options(selectinload(Reagent.packs)).order_by(Reagent.id.desc()),
+        per_page=20)
     categories = Category.query.order_by(Category.sort).all()
     all_categories = categories   # 全量分类：供新增/编辑弹窗使用，不受厂家筛选影响
     # 厂家与分类的对应关系（供前端“选分类后厂家下拉自动筛选”使用）
@@ -320,7 +323,8 @@ def reagent_list():
         di_map.setdefault(rid, []).append(di)
     # 分类下拉一律给全量，筛选区「分类↔厂家」的收敛交给前端双向联动，
     # 这样选厂家时分类也会跟着收敛，而不是只有选分类才收敛厂家
-    return render_template("basic/reagent.html", items=items,
+    return render_template("basic/reagent.html", items=pagination.items,
+                           pagination=pagination,
                            categories=all_categories, all_categories=all_categories,
                            manufacturers=manufacturers,
                            mfr_cat_map=mfr_cat_map,

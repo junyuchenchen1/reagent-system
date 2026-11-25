@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import pagination as render_pagination %}
 {% block title %}试剂档案{% endblock %}
 {% block page_title %}试剂档案{% endblock %}
 
@@ -30,11 +31,11 @@
 
 <div class="card">
     <div class="card-body p-0">
-        {% if items %}
+        {% if pagination.items %}
         <table class="table table-hover">
             <thead><tr><th>试剂名称</th><th>生产企业</th><th>规格</th><th>包装规格</th><th>存储条件</th><th>在库 / 在用</th><th>最低库存预警</th><th>状态</th><th style="width:160px;">操作</th></tr></thead>
             <tbody>
-            {% for r in items %}
+            {% for r in pagination.items %}
             <tr>
                 <td>
                     <div class="cell-main">{{ r.name }}
@@ -88,6 +89,7 @@
         {% endif %}
     </div>
 </div>
+{{ render_pagination(pagination, 'basic.reagent_list') }}
 
 <style>
     /* 编辑弹窗紧凑排版：一屏放下，不用下拉就能点到保存 */

@@ -858,6 +858,43 @@ def test_reagent_list_shows_bound_di(client, db_session, users, reagent):
     assert 'id="f_di_new"' in html
 
 
+def test_reagent_list_paginates(client, db_session):
+    """试剂档案每页 20 条；页码越界夹到末页，不 500、不出现空列表。"""
+    from app.models.reagent import Reagent
+
+    for i in range(25):
+        db_session.session.add(Reagent(
+            name=f"分页测试试剂{i:02d}", pack_size=1, unit="盒", small_unit="瓶",
+            min_stock=1, expire_warning_days=90, storage_condition="冷藏", status=1))
+    db_session.session.commit()
+
+    html = client.get("/basic/reagent").get_data(as_text=True)
+    assert html.count('class="cell-main"') == 20
+    assert 'name="page"' in html
+
+    html2 = client.get("/basic/reagent?page=2").get_data(as_text=True)
+    assert html2.count('class="cell-main"') == 5      # 25 - 20
+    assert "分页测试试剂24" in html        # id 倒序，最新建的排第一页
+    assert "分页测试试剂04" in html2        # 第 2 页是较早建的 5 条
+
+    resp = client.get("/basic/reagent?page=999")
+    assert resp.status_code == 200
+    html3 = resp.get_data(as_text=True)
+    assert html3.count('class="cell-main"') == 5
+
+
+def test_reagent_list_pagination_keeps_filters(client, db_session):
+    """翻页链接要带上筛选条件，不能一点页码就把搜索结果丢了。"""
+    from app.models.reagent import Reagent
+
+    db_session.session.add(Reagent(name="独特关键词试剂A", pack_size=1, unit="盒",
+                                   small_unit="瓶", status=1, min_stock=1,
+                                   storage_condition="冷藏"))
+    db_session.session.commit()
+    html = client.get("/basic/reagent?keyword=独特关键词").get_data(as_text=True)
+    assert "独特关键词试剂A" in html
+
+
 def test_reagent_scan_create_from_archive_page_stays_on_list(client, db_session):
     """在试剂档案页自己扫码建档（不带 from_stock_in）：绑定 DI，但不把人甩到入库页。"""
     from app.models.reagent import Reagent
