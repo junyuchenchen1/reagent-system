@@ -258,8 +258,8 @@ body.sidebar-collapsed .main-wrapper { margin-left: var(--sidebar-collapsed); }
 }
 .search-bar .form-control, .search-bar .form-select { font-size: 13px; }
 /* 筛选下拉框：按最长选项自适应宽度（厂家/供应商名很长的情况），悬停可看全名 */
-.search-bar.d-flex select.form-select { width: auto; min-width: 150px; max-width: 460px; }
-.search-bar.row select.form-select { max-width: 460px; }
+.search-bar.d-flex select.form-select { width: auto; min-width: 150px; max-width: 500px; }
+.search-bar.row select.form-select { max-width: 500px; }
 
 /* 分页 */
 .pagination { margin-bottom: 0; gap: 4px; }

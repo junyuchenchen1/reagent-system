@@ -49,18 +49,26 @@
         }, 4500);
 
         // ---------- 筛选下拉框：按最长选项自动加宽，名称过长时悬停看全名 ----------
-        const measureCtx = document.createElement("canvas").getContext("2d");
+        // 用真实渲染的隐藏 span 量文字宽度，比 canvas 估算准，避免最后一个字被下拉箭头压住
+        const measureEl = document.createElement("span");
+        measureEl.style.cssText = "position:absolute;left:-9999px;top:-9999px;white-space:nowrap;visibility:hidden";
+        document.body.appendChild(measureEl);
         function fitFilterSelect(sel) {
             const cs = window.getComputedStyle(sel);
-            measureCtx.font = cs.fontSize + " " + cs.fontFamily;
+            measureEl.style.fontSize = cs.fontSize;
+            measureEl.style.fontFamily = cs.fontFamily;
+            measureEl.style.fontWeight = cs.fontWeight;
             let maxW = 0;
             Array.from(sel.options).forEach(function (opt) {
                 if (opt.hidden) { return; }
-                const w = measureCtx.measureText(opt.text).width;
+                measureEl.textContent = opt.text;
+                const w = measureEl.getBoundingClientRect().width;
                 if (w > maxW) { maxW = w; }
             });
-            // 56px 给左右内边距、下拉箭头和余量
-            sel.style.minWidth = Math.max(150, Math.min(460, Math.ceil(maxW + 56))) + "px";
+            // 72px：左右内边距 + 下拉箭头 + 让末尾字不贴箭头的余量；手机上不超过筛选条宽度
+            const bar = sel.closest(".search-bar");
+            const capW = bar ? bar.clientWidth - 44 : 500;
+            sel.style.minWidth = Math.max(110, Math.min(500, capW, Math.ceil(maxW + 72))) + "px";
             const opt = sel.options[sel.selectedIndex];
             sel.title = (sel.value && opt) ? opt.text : "";
         }
