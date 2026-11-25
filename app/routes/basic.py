@@ -428,14 +428,21 @@ def reagent_delete():
     if not obj:
         flash("该试剂不存在", "danger")
     elif history:
-        flash(f"试剂「{obj.name}」存在库存或历史记录，无法删除，建议改为停用", "danger")
+        flash(f"试剂「{obj.name}」存在库存或出入库/使用记录，无法删除，建议改为停用", "danger")
     else:
         name = obj.name
+        # UDI 产品库的 reagent_id 是指向本档案的外键：删档案前先解绑。
+        # 否则一条出入库记录都没有、只是绑过 DI 的档案也会被外键拦住，
+        # 报成“仍被其他数据引用”，用户无从下手。
+        unbound = UdiProduct.query.filter_by(reagent_id=rid).count()
+        for prod in UdiProduct.query.filter_by(reagent_id=rid).all():
+            prod.reagent_id = None
         try:
             db.session.delete(obj)
             db.session.commit()
             log_operation("基础数据", f"删除试剂档案：{name}")
-            flash("删除成功", "success")
+            flash("删除成功" + (f"，已同时解除 {unbound} 个产品标识(UDI)绑定" if unbound else ""),
+                  "success")
         except IntegrityError:
             db.session.rollback()
             flash("该试剂仍被其他数据引用，无法删除，建议改为停用", "danger")

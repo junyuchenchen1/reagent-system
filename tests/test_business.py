@@ -325,6 +325,23 @@ def test_verify_batch_covers_all_receipts_of_same_batch(client, db_session, user
     assert "已验证" in client.get("/inventory/").get_data(as_text=True)
 
 
+def test_reagent_delete_unbinds_di_first(client, db_session, users, reagent):
+    """只有 DI 绑定、没有任何出入库记录的档案要能删：删前解绑 UDI 产品，不留悬挂外键。"""
+    from app.models.reagent import Reagent
+    from app.models.udi import UdiProduct
+    from app.services import udi_service
+
+    udi_service.bind_reagent("06972235840574", reagent.id)
+    resp = client.post("/basic/reagent/delete",
+                       data={"id": reagent.id, "csrf_token": "test-token"})
+    assert resp.status_code == 302
+    assert Reagent.query.filter_by(id=reagent.id).first() is None
+    # UDI 产品本身保留，只是解除绑定（以后还能重新绑到别的档案）
+    prod = db_session.session.get(UdiProduct, "06972235840574")
+    assert prod is not None
+    assert prod.reagent_id is None
+
+
 def test_reagent_with_history_cannot_be_deleted(client, db_session, users, reagent):
     from app.models.reagent import Reagent
 
