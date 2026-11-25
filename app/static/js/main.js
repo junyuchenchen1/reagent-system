@@ -48,6 +48,27 @@
             });
         }, 4500);
 
+        // ---------- 筛选下拉框：按最长选项自动加宽，名称过长时悬停看全名 ----------
+        const measureCtx = document.createElement("canvas").getContext("2d");
+        function fitFilterSelect(sel) {
+            const cs = window.getComputedStyle(sel);
+            measureCtx.font = cs.fontSize + " " + cs.fontFamily;
+            let maxW = 0;
+            Array.from(sel.options).forEach(function (opt) {
+                if (opt.hidden) { return; }
+                const w = measureCtx.measureText(opt.text).width;
+                if (w > maxW) { maxW = w; }
+            });
+            // 56px 给左右内边距、下拉箭头和余量
+            sel.style.minWidth = Math.max(150, Math.min(460, Math.ceil(maxW + 56))) + "px";
+            const opt = sel.options[sel.selectedIndex];
+            sel.title = (sel.value && opt) ? opt.text : "";
+        }
+        document.querySelectorAll(".search-bar select.form-select").forEach(function (sel) {
+            fitFilterSelect(sel);
+            sel.addEventListener("change", function () { fitFilterSelect(sel); });
+        });
+
         // ---------- 启用所有 tooltip ----------
         if (window.bootstrap) {
             document.querySelectorAll("[data-bs-toggle='tooltip']").forEach(function (el) {

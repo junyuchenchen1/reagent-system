@@ -4,21 +4,15 @@
 {% block page_title %}储存环境温湿度记录{% endblock %}
 
 {% block content %}
-<form class="search-bar row g-2" method="get">
-    <div class="col-md-2">
-        <select class="form-select" name="location">
-            <option value="">全部冰箱</option>
-            {% for loc in all_locs %}<option value="{{ loc }}" {{ 'selected' if loc_filter==loc }}>{{ loc }}</option>{% endfor %}
-        </select>
-    </div>
-    <div class="col-md-2">
-        <input type="month" class="form-control" name="month" value="{{ month }}">
-    </div>
-    <div class="col-md-2">
-        <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
-        <a class="btn btn-light" href="{{ url_for('inventory.temp_list') }}">重置</a>
-    </div>
-    <div class="col-md-3 ms-auto d-flex gap-2">
+<form class="search-bar d-flex flex-wrap gap-2 align-items-center" method="get">
+    <select class="form-select" name="location">
+        <option value="">全部冰箱</option>
+        {% for loc in all_locs %}<option value="{{ loc }}" {{ 'selected' if loc_filter==loc }}>{{ loc }}</option>{% endfor %}
+    </select>
+    <input type="month" class="form-control" name="month" value="{{ month }}" style="max-width:180px;">
+    <button class="btn btn-primary"><i class="bi bi-search"></i> 查询</button>
+    <a class="btn btn-light" href="{{ url_for('inventory.temp_list') }}"><i class="bi bi-arrow-counterclockwise"></i> 重置</a>
+    <div class="d-flex gap-2 ms-auto">
         <a class="btn btn-success" href="{{ url_for('inventory.temp_add') }}"><i class="bi bi-plus-lg"></i> 新增记录</a>
         <a class="btn btn-light" href="{{ url_for('inventory.temp_export') }}?location={{ loc_filter }}&month={{ month }}"><i class="bi bi-file-earmark-excel"></i> 导出</a>
     </div>

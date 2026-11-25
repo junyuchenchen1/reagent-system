@@ -5,14 +5,14 @@
 
 {% block content %}
 <form class="search-bar row g-2" method="get">
-    <div class="col-md-3"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="试剂名 / 批号"></div>
+    <div class="col-md-2"><input class="form-control" name="keyword" value="{{ keyword }}" placeholder="试剂名 / 批号"></div>
     <div class="col-md-2">
         <select class="form-select" name="category_id">
             <option value="">全部分类</option>
             {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category_id==c.id|string }}>{{ c.name }}</option>{% endfor %}
         </select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-4">
         <select class="form-select" name="mfr">
             <option value="">全部厂家</option>
             {% for m in manufacturers %}<option value="{{ m }}" {{ 'selected' if mfr==m }}>{{ m }}</option>{% endfor %}
