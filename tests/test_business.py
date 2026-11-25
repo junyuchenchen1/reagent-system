@@ -754,7 +754,7 @@ def test_reagent_modal_categories_keep_all_under_mfr_filter(client, db_session):
         assert "生化试剂类" in block and "免疫试剂类" in block
     # 双向联动：选分类收敛厂家（applyMfrFilter）、选厂家收敛分类（applyCatFilter）
     assert "applyMfrFilter" in html and "applyCatFilter" in html
-    assert "mfrSel.addEventListener('change', applyCatFilter)" in html
+    assert "mfrSel.addEventListener('change', function" in html and "applyCatFilter();" in html
 
 
 def test_in_add_page_has_udi_scanner(client):
