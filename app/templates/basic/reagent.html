@@ -109,6 +109,23 @@
                     <input type="hidden" name="id" id="f_id">
                     <input type="hidden" name="udi_di" id="f_udi" value="">
                     <input type="hidden" name="udi" id="f_udi_code" value="">
+                    <input type="hidden" name="from_stock_in" id="f_from_stock"
+                           value="{{ 1 if (prefill or {}).get('udi') else 0 }}">
+                    <div class="mb-2 p-2 rounded" style="background:var(--primary-light);" id="scanBox">
+                        <div class="d-flex gap-2">
+                            <div class="input-group input-group-sm flex-fill">
+                                <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                                <input class="form-control" id="f_scan" autocomplete="off"
+                                       placeholder="扫码枪扫盒码，或手输 DM 码，自动填名称/规格/注册证">
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm flex-shrink-0 text-nowrap" id="f_scan_btn">识别</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm flex-shrink-0 text-nowrap" id="f_scan_photo_btn">
+                                <i class="bi bi-image"></i> 拍照
+                            </button>
+                            <input type="file" id="f_scan_photo" accept="image/*" capture="environment" class="d-none">
+                        </div>
+                        <div class="form-text" id="scanHint"></div>
+                    </div>
                     <div class="row g-2">
                         <div class="col-md-6">
                             <div class="mb-2"><label class="form-label required">试剂名称</label>
@@ -195,12 +212,17 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/js/zxing.min.js') }}?v={{ STATIC_VERSION }}"></script>
 <script>
     const modalEl = document.getElementById('editModal');
     function openModal() {
         document.getElementById('f_id').value = '';
         document.getElementById('f_udi').value = '';
         document.getElementById('f_udi_code').value = '';
+        document.getElementById('f_from_stock').value = '0';
+        document.getElementById('f_scan').value = '';
+        document.getElementById('scanBox').classList.remove('d-none');
+        setScanHint('扫一下盒码，名称、规格、注册证、厂家会自动填好；识别不到就手填。');
         ['name','spec','remark'].forEach(k => document.getElementById('f_' + k).value = '');
         document.getElementById('f_category').value = '';
         document.getElementById('f_unit').value = '盒';
@@ -226,6 +248,12 @@
     function editItem(btn) {
         const d = btn.dataset;
         document.getElementById('f_id').value = d.id;
+        // 编辑已有档案时收起扫码区：避免一扫把原有名称规格覆盖掉，
+        // 补 DI 走下面的「UDI 产品标识（DI）」那一行
+        document.getElementById('scanBox').classList.add('d-none');
+        document.getElementById('f_udi').value = '';
+        document.getElementById('f_udi_code').value = '';
+        document.getElementById('f_from_stock').value = '0';
         document.getElementById('f_name').value = d.name || '';
         document.getElementById('f_category').value = d.category || '';
         document.getElementById('f_spec').value = d.spec || '';
@@ -344,8 +372,117 @@
         document.getElementById('f_registrant').value = PREFILL.registrant || '';
         document.getElementById('f_udi').value = PREFILL.udi_di || '';
         document.getElementById('f_udi_code').value = PREFILL.udi || '';
+        // 带着码从入库页跳来的：保存后回入库页继续扫；本页自己扫码建的不跳
+        document.getElementById('f_from_stock').value = PREFILL.udi ? '1' : '0';
         document.getElementById('modalTitle').textContent = PREFILL.name ? '新增试剂（来自 UDI 扫码）' : '新增试剂';
         updateMinHint();
     }
+
+    // ===== 新增弹窗里扫码建档：扫盒码 → 自动填名称/规格/注册证/厂家/DI =====
+    const scanInput = document.getElementById('f_scan');
+    function setScanHint(html, level) {
+        const el = document.getElementById('scanHint');
+        if (!el) { return; }
+        el.className = 'form-text' + (level === 'warn' ? ' text-warning' : (level === 'danger' ? ' text-danger' : ''));
+        el.innerHTML = html;
+    }
+    function scanEscape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function scanFill(code) {
+        code = String(code || '').trim();
+        if (!code) { return; }
+        scanInput.value = '';
+        setScanHint('识别中…');
+        fetch('/stock-in/udi?code=' + encodeURIComponent(code))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const p = d.parsed || {};
+                const prod = d.product || {};
+                if (!p.di && !p.batch_no) {
+                    setScanHint('没识别出 DM 码（读到 ' + scanEscape(String(code).slice(0, 40)) +
+                        '），可换个角度重扫或直接手填', 'warn');
+                    return;
+                }
+                // 扫码结果直接覆盖产品信息字段：扫码时这些字段基本都是空的
+                if (prod.name) { document.getElementById('f_name').value = prod.name; }
+                if (prod.spec) { document.getElementById('f_spec').value = prod.spec; }
+                if (prod.reg_no) { document.getElementById('f_regno').value = prod.reg_no; }
+                if (prod.mfr) { document.getElementById('f_registrant').value = prod.mfr; }
+                document.getElementById('f_udi').value = p.di || '';
+                document.getElementById('f_udi_code').value = code;
+                const filled = [];
+                if (prod.name) { filled.push('名称'); }
+                if (prod.spec) { filled.push('规格'); }
+                if (prod.reg_no) { filled.push('注册证'); }
+                if (prod.mfr) { filled.push('生产企业'); }
+                // 这个 DI 已经绑在某条档案：说明建档只会重复，提醒一下
+                const bound = (d.candidates || []).filter(function (c) { return c.score >= 200; })[0];
+                let tip = filled.length
+                    ? '已识别，填好：' + filled.join('、')
+                    : '已识别，但 UDI 库里没有这产品的名称规格，请手填名称';
+                if (p.di) {
+                    tip += '<br>产品标识 <b>' + scanEscape(p.di) + '</b>';
+                    // 告诉用户保存后会自动绑定，不用再在下面 DI 框里补一次
+                    const diHint = document.getElementById('diHint');
+                    if (diHint) { diHint.textContent = '本次扫描的产品标识，保存后自动绑定'; }
+                }
+                if (bound) {
+                    tip += '<br><span class="text-warning">这个产品标识已绑在档案「' +
+                        scanEscape(bound.name) + '」，同一款不用重复建档</span>';
+                }
+                setScanHint(tip, bound ? 'warn' : '');
+            })
+            .catch(function () { setScanHint('识别失败，请检查服务或手填', 'danger'); });
+    }
+    document.getElementById('f_scan_btn').addEventListener('click', function () { scanFill(scanInput.value); });
+    scanInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); scanFill(scanInput.value); }
+    });
+
+    // 拍照识别：手机拍标签，不依赖 HTTPS（局域网 http 下摄像头不可用）
+    const scanPhotoInput = document.getElementById('f_scan_photo');
+    document.getElementById('f_scan_photo_btn').addEventListener('click', function () {
+        if (typeof ZXing === 'undefined') { setScanHint('解码库未加载，请刷新页面重试', 'danger'); return; }
+        scanPhotoInput.value = '';
+        scanPhotoInput.click();
+    });
+    scanPhotoInput.addEventListener('change', function () {
+        const file = scanPhotoInput.files && scanPhotoInput.files[0];
+        if (!file) { return; }
+        if (typeof ZXing === 'undefined') { setScanHint('解码库未加载，请刷新页面重试', 'danger'); return; }
+        setScanHint('正在识别…');
+        const fail = '没识别到码，请靠近、放正、避免反光再拍';
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,
+                  [ZXing.BarcodeFormat.DATA_MATRIX, ZXing.BarcodeFormat.QR_CODE]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        const reader = new ZXing.BrowserMultiFormatReader(hints, 500);
+        const objUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+            const maxSide = 1600;
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(img.width * scale);
+            cv.height = Math.round(img.height * scale);
+            cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+            reader.decodeFromImageUrl(cv.toDataURL('image/jpeg', 0.92)).then(function (res) {
+                URL.revokeObjectURL(objUrl);
+                if (res && res.getText()) { scanFill(res.getText()); }
+                else { setScanHint(fail, 'warn'); }
+            }).catch(function () {
+                URL.revokeObjectURL(objUrl);
+                setScanHint(fail, 'warn');
+            });
+        };
+        img.onerror = function () {
+            URL.revokeObjectURL(objUrl);
+            setScanHint('图片打不开，请重拍', 'danger');
+        };
+        img.src = objUrl;
+    });
 </script>
 {% endblock %}

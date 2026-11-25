@@ -377,13 +377,18 @@ def reagent_save():
         log_operation("基础数据", f"新增试剂档案：{data['name']}")
     db.session.commit()
 
-    # 扫码建档闭环：记住这个 UDI 码 → 回到入库页自动重扫，省去再扫一次
+    # 扫码建档闭环：记住这个 UDI 码
+    # 从入库页跳来建档（from_stock_in=1）→ 回入库页自动重扫，省去再扫一次；
+    # 在试剂档案页自己扫码建档 → 留在档案列表，不把人甩到入库页
     udi_di = (request.form.get("udi_di", "") or "").strip()[:32]
     udi_code = (request.form.get("udi", "") or "").strip()[:512]
     if udi_di and not rid:
         udi_service.bind_reagent(udi_di, obj.id)
-        flash("已保存，并记住该产品标识；下面是入库页，已自动重新识别这条试剂。", "success")
-        return redirect(url_for("stock_in.in_add", udi=(udi_code or udi_di)))
+        if (request.form.get("from_stock_in") or "").strip() == "1":
+            flash("已保存，并记住该产品标识；下面是入库页，已自动重新识别这条试剂。", "success")
+            return redirect(url_for("stock_in.in_add", udi=(udi_code or udi_di)))
+        flash(f"已保存，并记住产品标识 {udi_di}；以后扫这盒试剂会自动对上本档案。", "success")
+        return redirect(url_for("basic.reagent_list"))
 
     # 手工补录产品标识：老档案后来才有盒码，扫一次码或手输 DI 即绑定，下次扫码自动选中
     added, skipped = [], []

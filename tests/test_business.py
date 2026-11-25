@@ -811,7 +811,7 @@ def test_reagent_save_with_udi_binds_and_returns_to_stock_in(client, db_session)
         "reg_no": "国械注准20183400568", "registrant": "深圳新产业",
         "unit": "盒", "pack_size": 1, "small_unit": "瓶",
         "min_stock": 1, "min_stock_unit": "pack", "status": "on",
-        "udi_di": DI, "udi": f"010{DI}B2601A", "csrf_token": "test-token",
+        "udi_di": DI, "udi": f"010{DI}B2601A", "from_stock_in": "1", "csrf_token": "test-token",
     })
     assert resp.status_code == 302
     location = resp.headers["Location"]
@@ -856,6 +856,27 @@ def test_reagent_list_shows_bound_di(client, db_session, users, reagent):
     html = resp.get_data(as_text=True)
     assert 'data-dis="06972235840574"' in html
     assert 'id="f_di_new"' in html
+
+
+def test_reagent_scan_create_from_archive_page_stays_on_list(client, db_session):
+    """在试剂档案页自己扫码建档（不带 from_stock_in）：绑定 DI，但不把人甩到入库页。"""
+    from app.models.reagent import Reagent
+    from app.models.udi import UdiProduct
+
+    resp = client.post("/basic/reagent/save", data={
+        "name": "肺炎支原体鉴定药敏试剂盒", "spec": "20人份/盒",
+        "reg_no": "粤械注准20172400115", "registrant": "珠海丽拓",
+        "unit": "盒", "pack_size": 20, "small_unit": "人份",
+        "min_stock": 1, "min_stock_unit": "pack", "status": "on",
+        "udi_di": "06972235840574", "udi": "01069722358405741126090117270831102026090121477",
+        "csrf_token": "test-token",
+    })
+    assert resp.status_code == 302
+    assert "/stock-in/add" not in resp.headers["Location"]
+
+    new = Reagent.query.filter_by(name="肺炎支原体鉴定药敏试剂盒").first()
+    assert new is not None
+    assert db_session.session.get(UdiProduct, "06972235840574").reagent_id == new.id
 
 
 def test_udi_import_filters_non_ivd(db_session, tmp_path):
